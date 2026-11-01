@@ -6,8 +6,8 @@ test('guests are redirected to the login page', function () {
     $this->get('/dashboard')->assertRedirect('/login');
 });
 
-test('authenticated users can visit the dashboard', function () {
-    $this->actingAs($user = User::factory()->create());
+test('authenticated admin users are redirected to the admin beranda', function () {
+    $this->actingAs($user = User::factory()->create(['role' => 'admin']));
 
-    $this->get('/dashboard')->assertOk();
+    $this->get('/dashboard')->assertRedirect(route('admin.beranda', absolute: false));
 });

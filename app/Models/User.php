@@ -47,4 +47,19 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    /**
+     * Nama route beranda default sesuai peran pengguna.
+     */
+    public function homeRoute(): string
+    {
+        return match ($this->role) {
+            'pasien' => 'pasien.beranda',
+            'perawat' => 'perawat.beranda',
+            'dokter_umum' => 'dokter.beranda',
+            'spesialis' => 'spesialis.beranda',
+            'admin' => 'admin.beranda',
+            default => 'dashboard',
+        };
+    }
 }

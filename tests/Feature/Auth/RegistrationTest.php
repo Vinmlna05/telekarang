@@ -19,5 +19,5 @@ test('new users can register', function () {
         'email' => 'test@example.com',
         'role' => 'pasien',
     ]);
-    $response->assertRedirect(route('dashboard', absolute: false));
+    $response->assertRedirect(route('pasien.beranda', absolute: false));
 });

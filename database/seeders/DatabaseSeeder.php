@@ -19,5 +19,30 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+
+        User::factory()->create([
+            'name' => 'Perawat Sari',
+            'email' => 'perawat@telekarang.test',
+            'role' => 'perawat',
+        ]);
+
+        User::factory()->create([
+            'name' => 'dr. Budi Santoso',
+            'email' => 'dokter@telekarang.test',
+            'role' => 'dokter_umum',
+        ]);
+
+        User::factory()->create([
+            'name' => 'dr. Ayu Lestari, Sp.A',
+            'email' => 'spesialis@telekarang.test',
+            'role' => 'spesialis',
+        ]);
+
+        User::factory()->create([
+            'name' => 'Reiki Admin',
+            'email' => 'reiki@gmail.com',
+            'password' => '12345678',
+            'role' => 'admin',
+        ]);
     }
 }
