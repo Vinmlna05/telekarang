@@ -63,14 +63,13 @@ export const dashboardRoles: Record<DashboardRole, DashboardRoleConfig> = {
     dokter_umum: {
         label: 'Dokter umum',
         workspace: 'Ruang kerja dokter umum',
-        home: '/dokter',
+        home: '/dokter/review',
         profile: '/settings/profile',
         defaultTitle: 'Review skrining',
         defaultDescription: 'Tinjau hasil skrining perawat dan putuskan apakah pasien perlu diteruskan ke dokter spesialis.',
         items: [
-            { key: 'beranda', label: 'Beranda', href: '/dokter', icon: Home },
             { key: 'review', label: 'Review', href: '/dokter/review', icon: ClipboardCheck },
-            { key: 'riwayat', label: 'Riwayat', href: '/dokter/riwayat', icon: History },
+            { key: 'riwayat', label: 'Riwayat', href: '/dokter/review?tab=riwayat', icon: History },
             { key: 'profil', label: 'Profil', href: '/settings/profile', icon: UserRound },
         ],
     },
@@ -92,7 +91,7 @@ export const dashboardRoles: Record<DashboardRole, DashboardRoleConfig> = {
         label: 'Admin',
         workspace: 'Ruang kerja admin',
         home: '/admin',
-        profile: '/settings/profile',
+        profile: '/admin/profil',
         defaultTitle: 'Dasbor statistik',
         defaultDescription: 'Ringkasan konsultasi, rujukan terhindarkan, dan dampak layanan TeleKarang.',
         items: [

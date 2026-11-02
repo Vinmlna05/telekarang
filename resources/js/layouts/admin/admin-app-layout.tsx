@@ -2,7 +2,7 @@ import { type ReactNode } from 'react';
 
 import RoleDashboardLayout from '@/layouts/dashboard/role-dashboard-layout';
 
-type NavKey = 'dasbor' | 'pengguna' | 'master' | 'log';
+type NavKey = 'dasbor' | 'pengguna' | 'master' | 'log' | 'profil';
 
 interface AdminAppLayoutProps {
     children: ReactNode;

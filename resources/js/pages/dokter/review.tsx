@@ -1,10 +1,11 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     CheckCircle2,
     ChevronRight,
     ClipboardCheck,
     Clock,
+    History,
     Search,
     ShieldCheck,
     Stethoscope,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
+import { konsultasiPerawat } from '@/data/konsultasi-perawat';
 import DokterAppLayout from '@/layouts/dokter/dokter-app-layout';
 import { cn } from '@/lib/utils';
 
@@ -93,6 +95,178 @@ export default function ReviewDokter({ ringkasan, skrining }: ReviewDokterProps)
         return cocokFilter && cocokCari;
     });
 
+    const { url } = usePage();
+    const tabRiwayat = url.includes('tab=riwayat');
+    const hasilSelesai = konsultasiPerawat.filter((item) => item.hasil !== null);
+    const jumlahRujuk = hasilSelesai.filter((item) => item.hasil?.keputusanRujuk === true).length;
+    const jumlahTerhindarkan = hasilSelesai.length - jumlahRujuk;
+
+    const navigasiTab = (
+        <div
+            role="tablist"
+            aria-label="Bagian review dokter umum"
+            className="mb-5 flex w-fit flex-wrap gap-1 rounded-full border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-1"
+        >
+            <Link
+                href="/dokter/review"
+                role="tab"
+                aria-selected={!tabRiwayat}
+                className={cn(
+                    'inline-flex min-h-9 items-center gap-1.5 rounded-full px-4 text-[11px] font-semibold transition-colors',
+                    !tabRiwayat ? 'bg-tk-accent text-tk-deep' : 'text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
+                )}
+            >
+                <ClipboardCheck className="size-3.5" aria-hidden="true" />
+                Antrean review
+                <span className={cn('text-[10px]', !tabRiwayat ? 'text-tk-deep/70' : 'text-[var(--tk-muted)]')}>{skrining.length}</span>
+            </Link>
+            <Link
+                href="/dokter/review?tab=riwayat"
+                role="tab"
+                aria-selected={tabRiwayat}
+                className={cn(
+                    'inline-flex min-h-9 items-center gap-1.5 rounded-full px-4 text-[11px] font-semibold transition-colors',
+                    tabRiwayat ? 'bg-tk-accent text-tk-deep' : 'text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
+                )}
+            >
+                <History className="size-3.5" aria-hidden="true" />
+                Riwayat hasil
+                <span className={cn('text-[10px]', tabRiwayat ? 'text-tk-deep/70' : 'text-[var(--tk-muted)]')}>{hasilSelesai.length}</span>
+            </Link>
+        </div>
+    );
+
+    if (tabRiwayat) {
+        return (
+            <DokterAppLayout
+                active="riwayat"
+                title="Riwayat hasil konsultasi"
+                description="Tinjau diagnosis ICD-10, keputusan rujukan, dan verifikasi tindak lanjut pasien yang sudah selesai dikonsultasikan."
+            >
+                <Head title="Riwayat hasil konsultasi" />
+
+                {navigasiTab}
+
+                <section aria-label="Ringkasan riwayat" className="grid gap-4 sm:grid-cols-3">
+                    <article className={cn('rounded-[22px] p-5', glass)}>
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-[11px] font-semibold text-[var(--tk-muted)]">Total hasil</p>
+                                <p className="mt-3 text-[36px] leading-none font-semibold tracking-[-0.02em]">{hasilSelesai.length}</p>
+                                <p className="mt-2 text-[11px] text-[var(--tk-muted)]">konsultasi selesai</p>
+                            </div>
+                            <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-9 shrink-0 place-items-center rounded-full">
+                                <ClipboardCheck className="size-4" aria-hidden="true" />
+                            </span>
+                        </div>
+                    </article>
+
+                    <article className={cn('rounded-[22px] p-5', glass)}>
+                        <p className="text-[11px] font-semibold text-[var(--tk-muted)]">Perlu dirujuk</p>
+                        <p className="text-tk-warning mt-3 text-[36px] leading-none font-semibold tracking-[-0.02em]">{jumlahRujuk}</p>
+                        <p className="mt-2 text-[11px] text-[var(--tk-muted)]">pasien dirujuk ke RS</p>
+                    </article>
+
+                    <article className={cn('rounded-[22px] p-5', glass)}>
+                        <p className="text-[11px] font-semibold text-[var(--tk-muted)]">Rujukan terhindarkan</p>
+                        <p className="text-tk-green-500 dark:text-tk-accent mt-3 text-[36px] leading-none font-semibold tracking-[-0.02em]">
+                            {jumlahTerhindarkan}
+                        </p>
+                        <p className="mt-2 text-[11px] text-[var(--tk-muted)]">cukup ditangani di puskesmas</p>
+                    </article>
+                </section>
+
+                <section aria-labelledby="daftar-riwayat" className="mt-6 min-w-0">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <h2 id="daftar-riwayat" className="text-[17px] font-bold">
+                            Daftar hasil konsultasi
+                        </h2>
+                        <Link
+                            href="/dokter/review"
+                            className="inline-flex min-h-9 items-center gap-1.5 text-[11px] font-semibold text-[var(--tk-muted)] transition-colors hover:text-[var(--tk-text)]"
+                        >
+                            <Clock className="size-3.5" aria-hidden="true" />
+                            Lihat antrean review
+                        </Link>
+                    </div>
+
+                    <div className="grid gap-3">
+                        {hasilSelesai.length > 0 ? (
+                            hasilSelesai.map((item) => {
+                                const dirujuk = item.hasil?.keputusanRujuk === true;
+
+                                return (
+                                    <article key={item.id} className={cn('rounded-[20px] p-4 lg:p-5', glass)}>
+                                        <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+                                            <div className="flex min-w-0 items-center gap-3 xl:w-[28%]">
+                                                <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-10 shrink-0 place-items-center rounded-full text-xs font-bold">
+                                                    {initials(item.pasien.nama)}
+                                                </span>
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                        <p className="truncate text-sm font-bold">{item.pasien.nama}</p>
+                                                        <span
+                                                            className={cn(
+                                                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                                                                dirujuk ? 'bg-tk-warning/15 text-tk-warning' : 'bg-tk-success/15 text-tk-success',
+                                                            )}
+                                                        >
+                                                            {dirujuk ? (
+                                                                <AlertTriangle className="size-3" aria-hidden="true" />
+                                                            ) : (
+                                                                <ShieldCheck className="size-3" aria-hidden="true" />
+                                                            )}
+                                                            {dirujuk ? 'Dirujuk' : 'Tidak dirujuk'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-0.5 text-[11px] text-[var(--tk-muted)]">
+                                                        {item.pasien.usia} tahun · {item.pasien.noRm}
+                                                    </p>
+                                                    <p className="text-[10px] text-[var(--tk-muted)]">{item.tanggal}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="min-w-0 flex-1 rounded-2xl bg-[var(--tk-page-alt)] px-3.5 py-3">
+                                                <p className="text-[11px] font-bold">
+                                                    <span className="font-mono">{item.hasil?.icd10Kode}</span> · {item.hasil?.icd10Nama}
+                                                </p>
+                                                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--tk-muted)]">
+                                                    {item.hasil?.saran}
+                                                </p>
+                                                <p className="mt-1 flex items-center gap-1 text-[10px] text-[var(--tk-muted)]">
+                                                    <Stethoscope className="size-3 shrink-0" aria-hidden="true" />
+                                                    {item.dokter} · {item.hasil?.waktu}
+                                                </p>
+                                            </div>
+
+                                            <Link
+                                                href={`/dokter/hasil/${item.id}`}
+                                                className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full px-4 text-xs font-semibold transition-colors xl:self-center"
+                                            >
+                                                Lihat hasil
+                                                <ChevronRight className="size-3.5" aria-hidden="true" />
+                                            </Link>
+                                        </div>
+                                    </article>
+                                );
+                            })
+                        ) : (
+                            <div className={cn('grid justify-items-center gap-2 rounded-[20px] px-4 py-12 text-center', glass)}>
+                                <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-12 place-items-center rounded-full">
+                                    <History className="size-6" aria-hidden="true" />
+                                </span>
+                                <p className="text-sm font-bold">Belum ada hasil konsultasi</p>
+                                <p className="max-w-[36ch] text-xs text-[var(--tk-muted)]">
+                                    Hasil akan muncul di sini setelah dokter spesialis menyelesaikan konsultasi.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </section>
+            </DokterAppLayout>
+        );
+    }
+
     return (
         <DokterAppLayout
             active="review"
@@ -100,6 +274,8 @@ export default function ReviewDokter({ ringkasan, skrining }: ReviewDokterProps)
             description="Tinjau hasil skrining perawat dan putuskan apakah pasien perlu diteruskan ke dokter spesialis."
         >
             <Head title="Daftar skrining untuk direview" />
+
+            {navigasiTab}
 
             <section aria-label="Ringkasan review" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <article
