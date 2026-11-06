@@ -119,10 +119,10 @@ export default function BerandaAdmin({ periode, ringkasan, tren, diagnosis, spes
     return (
         <AdminAppLayout
             active="dasbor"
-            title="Dasbor statistik"
+            title="Dasbor Statistik"
             description="Ringkasan konsultasi, rujukan terhindarkan, dan dampak layanan TeleKarang bagi pasien Pulau Karang."
         >
-            <Head title="Dasbor statistik admin" />
+            <Head title="Dasbor Statistik admin" />
 
             <section
                 aria-label="Pilih periode dan ekspor"

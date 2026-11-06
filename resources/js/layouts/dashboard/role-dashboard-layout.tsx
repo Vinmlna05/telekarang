@@ -1,9 +1,12 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Bell, Wifi, WifiOff } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { WifiOff } from 'lucide-react';
+import type { ReactNode } from 'react';
 
+import ConnectionBadge from '@/components/connection-badge';
+import NotificationCenter from '@/components/notification-center';
 import TelekarangBrand from '@/components/telekarang-brand';
 import ThemeToggle from '@/components/theme-toggle';
+import { useConnection } from '@/hooks/use-connection';
 import { dashboardRoles, type DashboardRole } from '@/layouts/dashboard/nav-config';
 import { cn } from '@/lib/utils';
 import { type SharedData } from '@/types';
@@ -29,35 +32,12 @@ function initials(name: string): string {
 export default function RoleDashboardLayout({ role, active, title, description, children }: RoleDashboardLayoutProps) {
     const { auth } = usePage<SharedData>().props;
     const config = dashboardRoles[role];
-    const [online, setOnline] = useState(true);
-
-    useEffect(() => {
-        const update = () => setOnline(navigator.onLine);
-
-        update();
-        window.addEventListener('online', update);
-        window.addEventListener('offline', update);
-
-        return () => {
-            window.removeEventListener('online', update);
-            window.removeEventListener('offline', update);
-        };
-    }, []);
+    const koneksi = useConnection();
 
     const pageTitle = title ?? config.defaultTitle;
     const pageDescription = description ?? config.defaultDescription;
 
-    const connectionPill = (
-        <span
-            className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold whitespace-nowrap',
-                online ? 'border-tk-accent/40 bg-tk-accent/15 text-tk-mint' : 'border-tk-danger/50 bg-tk-danger/20 text-white',
-            )}
-        >
-            {online ? <Wifi className="size-3.5" aria-hidden="true" /> : <WifiOff className="size-3.5" aria-hidden="true" />}
-            {online ? 'Koneksi stabil' : 'Offline'}
-        </span>
-    );
+    const connectionPill = <ConnectionBadge status={koneksi.status} variant="header" />;
 
     return (
         <div className="flex min-h-screen flex-col bg-[var(--tk-page)] font-sans text-[var(--tk-text)]">
@@ -104,14 +84,7 @@ export default function RoleDashboardLayout({ role, active, title, description, 
                         <div className="flex items-center gap-2">
                             <span className="hidden md:inline-flex">{connectionPill}</span>
                             <ThemeToggle className="size-10" />
-                            <button
-                                type="button"
-                                aria-label="Notifikasi, belum ada pesan baru"
-                                className="relative hidden size-10 shrink-0 place-items-center rounded-full border border-white/[0.28] bg-white/[0.08] transition-colors hover:bg-white/[0.16] sm:grid"
-                            >
-                                <Bell className="size-[18px]" aria-hidden="true" />
-                                <span className="bg-tk-warning absolute top-2.5 right-2.5 size-1.5 rounded-full" aria-hidden="true" />
-                            </button>
+                            <NotificationCenter />
 
                             <Link
                                 href={config.profile}
@@ -182,6 +155,18 @@ export default function RoleDashboardLayout({ role, active, title, description, 
                     </div>
                 </div>
             </header>
+
+            {koneksi.status === 'offline' && (
+                <div role="status" aria-live="polite" className="border-tk-warning/25 bg-tk-warning/10 border-b print:hidden">
+                    <div className="mx-auto flex w-full max-w-[1120px] items-start gap-2.5 px-5 py-3">
+                        <WifiOff className="text-tk-warning mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                        <p className="text-[11px] leading-relaxed text-[var(--tk-muted)]">
+                            <span className="font-bold text-[var(--tk-text)]">Anda sedang offline, draf tersimpan.</span> Perubahan dan pesan akan
+                            dikirim otomatis ketika sinyal kembali.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             <main className="mx-auto w-full max-w-[1120px] flex-1 px-5 py-8 lg:py-10 print:max-w-none print:py-0">{children}</main>
 

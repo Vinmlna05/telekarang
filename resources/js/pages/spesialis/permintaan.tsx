@@ -355,11 +355,15 @@ export default function PermintaanSpesialisPage() {
                 </article>
             </section>
 
-            <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(300px,0.9fr)]">
+            <div className="mt-6 grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="grid min-w-0 content-start gap-5">
-                    <section aria-label="Pencarian dan filter permintaan" className={cn('rounded-[20px] p-3', glass)}>
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                            <div role="tablist" aria-label="Filter status permintaan" className="flex gap-1 overflow-x-auto pb-1 lg:pb-0">
+                    <section aria-label="Pencarian dan filter permintaan" className={cn('min-w-0 rounded-[20px] p-3', glass)}>
+                        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+                            <div
+                                role="tablist"
+                                aria-label="Filter status permintaan"
+                                className="flex min-w-0 flex-1 gap-1 overflow-x-auto pb-1 [scrollbar-width:none] lg:pb-0 [&::-webkit-scrollbar]:hidden"
+                            >
                                 {filterPilihan.map(({ key, label, jumlah: total }) => (
                                     <button
                                         key={key}
@@ -380,7 +384,7 @@ export default function PermintaanSpesialisPage() {
                                 ))}
                             </div>
 
-                            <div className="relative lg:w-60">
+                            <div className="relative w-full lg:w-[280px] lg:shrink-0">
                                 <Search
                                     className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-[var(--tk-muted)]"
                                     aria-hidden="true"
@@ -397,7 +401,7 @@ export default function PermintaanSpesialisPage() {
                         </div>
                     </section>
 
-                    <div className="grid gap-4">
+                    <div className="grid min-w-0 gap-4">
                         {tampil.length === 0 ? (
                             <div className={cn('rounded-[20px] px-5 py-10 text-center', glass)}>
                                 <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent mx-auto grid size-12 place-items-center rounded-full">
@@ -428,15 +432,15 @@ export default function PermintaanSpesialisPage() {
                                 const IkonAksi = metaAksi?.ikon ?? Clock;
 
                                 return (
-                                    <article key={item.id} className={cn('rounded-[20px] p-4 lg:p-5', glass)}>
-                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                            <div className="flex min-w-0 items-start gap-3">
+                                    <article key={item.id} className={cn('min-w-0 overflow-hidden rounded-[20px] p-4 lg:p-5', glass)}>
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                                            <div className="flex min-w-0 flex-1 items-start gap-3">
                                                 <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-10 shrink-0 place-items-center rounded-full text-xs font-bold">
                                                     {initials(item.nama)}
                                                 </span>
-                                                <div className="min-w-0">
+                                                <div className="min-w-0 flex-1">
                                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                                        <h2 className="truncate text-sm font-bold">{item.nama}</h2>
+                                                        <h2 className="max-w-full min-w-0 truncate text-sm font-bold">{item.nama}</h2>
                                                         <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', prioritas.tone)}>
                                                             {prioritas.label}
                                                         </span>
@@ -452,7 +456,7 @@ export default function PermintaanSpesialisPage() {
 
                                             <span
                                                 className={cn(
-                                                    'inline-flex w-fit shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold',
+                                                    'inline-flex w-fit shrink-0 items-center gap-1 self-start rounded-full px-2.5 py-1 text-[10px] font-bold sm:ml-auto',
                                                     status.tone,
                                                 )}
                                             >
@@ -759,7 +763,7 @@ export default function PermintaanSpesialisPage() {
                     </div>
                 </div>
 
-                <aside className="grid content-start gap-5 lg:sticky lg:top-6 lg:self-start">
+                <aside className="grid min-w-0 content-start gap-5 lg:sticky lg:top-6 lg:self-start">
                     <section aria-labelledby="panduan-keputusan" className={cn('rounded-[24px] p-5', glass)}>
                         <div className="flex items-center gap-2">
                             <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-9 place-items-center rounded-full">

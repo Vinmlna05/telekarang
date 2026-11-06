@@ -37,6 +37,7 @@ export interface PesanPerawat {
     pengirim: PengirimPesan;
     isi: string;
     waktu: string;
+    foto?: string | null;
     statusKirim?: 'TERKIRIM' | 'MENUNGGU';
 }
 

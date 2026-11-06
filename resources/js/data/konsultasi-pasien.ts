@@ -43,6 +43,8 @@ export interface PesanKonsultasi {
     pengirim: PengirimPesan;
     isi: string;
     waktu: string;
+    foto?: string | null;
+    statusKirim?: 'TERKIRIM' | 'MENUNGGU';
 }
 
 export interface KonsultasiPasien {
