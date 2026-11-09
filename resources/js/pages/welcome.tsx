@@ -373,7 +373,7 @@ export default function Welcome() {
                 <div className={cn(container, 'flex flex-wrap items-center justify-between gap-3')}>
                     <TelekarangBrand />
                     <p className="max-w-[60ch] text-sm text-[var(--tk-muted)]">
-                        Prototipe studi kasus Puskesmas Pulau Karang. Seluruh data pasien dan dokter adalah fiktif.
+                        Menghubungkan pasien kepulauan dengan dokter spesialis tanpa harus menempuh perjalanan jauh.
                     </p>
                 </div>
             </footer>

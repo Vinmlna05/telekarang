@@ -65,7 +65,7 @@ export default function AuthTelekarangLayout({ children, title, description, eye
                         )}
 
                         <p className="mt-10 text-xs text-white/55">
-                            Prototipe studi kasus Puskesmas Pulau Karang. Seluruh data pasien dan dokter adalah fiktif.
+                            Menghubungkan pasien kepulauan dengan dokter spesialis tanpa harus menempuh perjalanan jauh.
                         </p>
                     </section>
 

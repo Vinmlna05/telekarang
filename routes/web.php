@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Admin\AkunController as AdminAkunController;
 use App\Http\Controllers\Admin\BerandaController as AdminBerandaController;
+use App\Http\Controllers\Admin\DokterController as AdminDokterController;
+use App\Http\Controllers\Admin\Icd10Controller as AdminIcd10Controller;
+use App\Http\Controllers\Admin\LogController as AdminLogController;
 use App\Http\Controllers\Admin\PenggunaController as AdminPenggunaController;
 use App\Http\Controllers\Dokter\HasilController as DokterHasilController;
 use App\Http\Controllers\Dokter\ReviewController as DokterReviewController;
@@ -69,6 +72,10 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:pasien')
         ->name('pasien.profil');
 
+    Route::get('pasien/notifikasi', fn () => Inertia::render('pasien/notifikasi'))
+        ->middleware('role:pasien')
+        ->name('pasien.notifikasi');
+
     Route::get('pasien/akun', [PasienAkunController::class, 'edit'])
         ->middleware('role:pasien')
         ->name('pasien.akun');
@@ -107,6 +114,10 @@ Route::middleware(['auth'])->group(function () {
     Route::get('perawat/pasien', PerawatPasienController::class)
         ->middleware('role:perawat')
         ->name('perawat.pasien');
+
+    Route::get('perawat/notifikasi', fn () => Inertia::render('perawat/notifikasi'))
+        ->middleware('role:perawat')
+        ->name('perawat.notifikasi');
 
     Route::get('dokter', fn () => redirect()->route('dokter.review'))
         ->middleware('role:dokter_umum')
@@ -152,15 +163,36 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:admin')
         ->name('admin.beranda');
 
-    Route::get('admin/dokter', fn () => Inertia::render('admin/dokter'))
+    Route::get('admin/dokter', [AdminDokterController::class, 'index'])
         ->middleware('role:admin')
         ->name('admin.dokter');
 
-    Route::get('admin/icd10', fn () => Inertia::render('admin/icd10'))
+    Route::post('admin/dokter', [AdminDokterController::class, 'store'])
+        ->middleware('role:admin')
+        ->name('admin.dokter.store');
+
+    Route::patch('admin/dokter/{dokter}', [AdminDokterController::class, 'update'])
+        ->whereNumber('dokter')
+        ->middleware('role:admin')
+        ->name('admin.dokter.update');
+
+    Route::get('admin/icd10', [AdminIcd10Controller::class, 'index'])
         ->middleware('role:admin')
         ->name('admin.icd10');
 
-    Route::get('admin/log', fn () => Inertia::render('admin/log'))
+    Route::post('admin/icd10', [AdminIcd10Controller::class, 'store'])
+        ->middleware('role:admin')
+        ->name('admin.icd10.store');
+
+    Route::patch('admin/icd10/{icd10}', [AdminIcd10Controller::class, 'update'])
+        ->middleware('role:admin')
+        ->name('admin.icd10.update');
+
+    Route::delete('admin/icd10/{icd10}', [AdminIcd10Controller::class, 'destroy'])
+        ->middleware('role:admin')
+        ->name('admin.icd10.destroy');
+
+    Route::get('admin/log', AdminLogController::class)
         ->middleware('role:admin')
         ->name('admin.log');
 

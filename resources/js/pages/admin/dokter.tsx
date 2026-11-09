@@ -1,13 +1,12 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     Ban,
     BriefcaseMedical,
-    CalendarDays,
     CheckCircle2,
     ChevronDown,
-    ClipboardList,
     Database,
+    LoaderCircle,
     Mail,
     MapPin,
     Pencil,
@@ -17,7 +16,7 @@ import {
     Users,
     type LucideIcon,
 } from 'lucide-react';
-import { useMemo, useState, type FormEventHandler } from 'react';
+import { useEffect, useMemo, useState, type FormEventHandler } from 'react';
 
 import InputError from '@/components/input-error';
 import { authInputClass } from '@/components/password-field';
@@ -35,32 +34,58 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AdminAppLayout from '@/layouts/admin/admin-app-layout';
 import { cn } from '@/lib/utils';
+import { type SharedData } from '@/types';
 
 type PeranDokter = 'umum' | 'spesialis';
 type StatusDokter = 'aktif' | 'nonaktif';
 
 interface DokterItem {
     id: number;
+    user_id: number;
     nama: string;
-    email: string;
+    email: string | null;
     peran: PeranDokter;
     spesialisasi: string | null;
     faskes: string;
     status: StatusDokter;
-    jadwal: number;
-    konsultasi: number;
 }
 
-interface DokterForm {
-    nama: string;
+interface AkunItem {
+    id: number;
+    name: string;
     email: string;
+    role: 'dokter_umum' | 'spesialis';
+    tertaut: boolean;
+}
+
+interface RingkasanDokter {
+    total: number;
+    umum: number;
+    spesialis: number;
+    belumLengkap: number;
+}
+
+interface Filters {
+    q: string;
+    peran: string;
+    spesialisasi: string;
+}
+
+interface DokterProps {
+    dokter: DokterItem[];
+    ringkasan: RingkasanDokter;
+    akun: AkunItem[];
+    filters: Filters;
+}
+
+type DokterForm = {
+    user_id: string;
+    nama: string;
     peran: PeranDokter;
     spesialisasi: string;
     faskes: string;
     status: StatusDokter;
-}
-
-type DokterErrors = Partial<Record<keyof DokterForm, string>>;
+};
 
 const SPESIALISASI = ['Anak', 'Penyakit Dalam', 'Kulit', 'Kandungan', 'Bedah', 'Mata', 'THT', 'Saraf', 'Lainnya'];
 const FASKES = ['Puskesmas Pulau Karang', 'RS Rujukan Daratan', 'Klinik Mitra Pesisir'];
@@ -94,82 +119,13 @@ const statusMeta: Record<StatusDokter, { label: string; icon: LucideIcon; badge:
 };
 
 const initialForm: DokterForm = {
+    user_id: '',
     nama: '',
-    email: '',
     peran: 'umum',
     spesialisasi: '',
     faskes: FASKES[0],
     status: 'aktif',
 };
-
-const dokterAwal: DokterItem[] = [
-    {
-        id: 1,
-        nama: 'dr. Budi Santoso',
-        email: 'dokter@telekarang.test',
-        peran: 'umum',
-        spesialisasi: null,
-        faskes: 'Puskesmas Pulau Karang',
-        status: 'aktif',
-        jadwal: 5,
-        konsultasi: 12,
-    },
-    {
-        id: 2,
-        nama: 'dr. Ayu Lestari, Sp.A',
-        email: 'spesialis@telekarang.test',
-        peran: 'spesialis',
-        spesialisasi: 'Anak',
-        faskes: 'RS Rujukan Daratan',
-        status: 'aktif',
-        jadwal: 3,
-        konsultasi: 18,
-    },
-    {
-        id: 3,
-        nama: 'dr. Hendra Wijaya, Sp.PD',
-        email: 'hendra@telekarang.test',
-        peran: 'spesialis',
-        spesialisasi: 'Penyakit Dalam',
-        faskes: 'RS Rujukan Daratan',
-        status: 'aktif',
-        jadwal: 2,
-        konsultasi: 9,
-    },
-    {
-        id: 4,
-        nama: 'dr. Maya Sari, Sp.KK',
-        email: 'maya@telekarang.test',
-        peran: 'spesialis',
-        spesialisasi: 'Kulit',
-        faskes: 'RS Rujukan Daratan',
-        status: 'aktif',
-        jadwal: 1,
-        konsultasi: 4,
-    },
-    {
-        id: 5,
-        nama: 'dr. Rina Kartika, Sp.OG',
-        email: 'rina@telekarang.test',
-        peran: 'spesialis',
-        spesialisasi: null,
-        faskes: '',
-        status: 'nonaktif',
-        jadwal: 0,
-        konsultasi: 0,
-    },
-    {
-        id: 6,
-        nama: 'dr. Anton Prasetyo',
-        email: 'anton@telekarang.test',
-        peran: 'umum',
-        spesialisasi: null,
-        faskes: 'Puskesmas Pulau Karang',
-        status: 'nonaktif',
-        jadwal: 0,
-        konsultasi: 2,
-    },
-];
 
 const formatAngka = new Intl.NumberFormat('id-ID');
 
@@ -184,47 +140,42 @@ function initials(name: string): string {
 }
 
 function perluDilengkapi(dokter: DokterItem): boolean {
-    return dokter.peran === 'spesialis' && (!dokter.spesialisasi || !dokter.faskes);
+    return dokter.peran === 'spesialis' && !dokter.spesialisasi;
 }
 
-export default function Dokter() {
-    const [dokterList, setDokterList] = useState<DokterItem[]>(dokterAwal);
-    const [q, setQ] = useState('');
-    const [peran, setPeran] = useState<PeranDokter | ''>('');
-    const [spesialisasi, setSpesialisasi] = useState('');
+export default function Dokter({ dokter, ringkasan, akun, filters }: DokterProps) {
+    const { flash } = usePage<SharedData>().props;
+    const [q, setQ] = useState(filters.q);
+    const [peran, setPeran] = useState<PeranDokter | ''>(filters.peran === 'umum' || filters.peran === 'spesialis' ? filters.peran : '');
+    const [spesialisasi, setSpesialisasi] = useState(filters.spesialisasi);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
-    const [form, setForm] = useState<DokterForm>({ ...initialForm });
-    const [errors, setErrors] = useState<DokterErrors>({});
-    const [flash, setFlash] = useState<string | null>(null);
+
+    const form = useForm<DokterForm>({ ...initialForm });
+
+    useEffect(() => {
+        setQ(filters.q);
+        setPeran(filters.peran === 'umum' || filters.peran === 'spesialis' ? filters.peran : '');
+        setSpesialisasi(filters.spesialisasi);
+    }, [filters.q, filters.peran, filters.spesialisasi]);
 
     const dokterTampil = useMemo(() => {
         const keyword = q.trim().toLowerCase();
 
-        return dokterList.filter((dokter) => {
+        return dokter.filter((item) => {
             const cocokCari =
                 keyword === '' ||
-                [dokter.nama, dokter.email, dokter.faskes, dokter.spesialisasi ?? ''].some((nilai) => nilai.toLowerCase().includes(keyword));
-            const cocokPeran = peran === '' || dokter.peran === peran;
-            const cocokSpesialisasi = spesialisasi === '' || dokter.spesialisasi === spesialisasi;
+                [item.nama, item.email ?? '', item.faskes, item.spesialisasi ?? ''].some((nilai) => nilai.toLowerCase().includes(keyword));
+            const cocokPeran = peran === '' || item.peran === peran;
+            const cocokSpesialisasi = spesialisasi === '' || item.spesialisasi === spesialisasi;
 
             return cocokCari && cocokPeran && cocokSpesialisasi;
         });
-    }, [dokterList, q, peran, spesialisasi]);
-
-    const ringkasan = useMemo(
-        () => ({
-            total: dokterList.length,
-            umum: dokterList.filter((dokter) => dokter.peran === 'umum').length,
-            spesialis: dokterList.filter((dokter) => dokter.peran === 'spesialis').length,
-            belumLengkap: dokterList.filter(perluDilengkapi).length,
-        }),
-        [dokterList],
-    );
+    }, [dokter, q, peran, spesialisasi]);
 
     const filterAktif = q !== '' || peran !== '' || spesialisasi !== '';
 
-    const ringkasanCards: { key: keyof typeof ringkasan; label: string; caption: string; icon: LucideIcon; tone: string }[] = [
+    const ringkasanCards: { key: keyof RingkasanDokter; label: string; caption: string; icon: LucideIcon; tone: string }[] = [
         {
             key: 'total',
             label: 'Total dokter',
@@ -263,92 +214,63 @@ export default function Dokter() {
 
     const bukaTambah = () => {
         setEditingId(null);
-        setForm({ ...initialForm });
-        setErrors({});
+        form.setData({ ...initialForm });
+        form.clearErrors();
         setDialogOpen(true);
     };
 
-    const bukaEdit = (dokter: DokterItem) => {
-        setEditingId(dokter.id);
-        setForm({
-            nama: dokter.nama,
-            email: dokter.email,
-            peran: dokter.peran,
-            spesialisasi: dokter.spesialisasi ?? '',
-            faskes: dokter.faskes,
-            status: dokter.status,
+    const bukaEdit = (item: DokterItem) => {
+        setEditingId(item.id);
+        form.setData({
+            user_id: String(item.user_id),
+            nama: item.nama,
+            peran: item.peran,
+            spesialisasi: item.spesialisasi ?? '',
+            faskes: item.faskes,
+            status: item.status,
         });
-        setErrors({});
+        form.clearErrors();
         setDialogOpen(true);
     };
 
-    const ubahField = (key: keyof DokterForm, value: string) => {
-        setForm((current) => {
-            const next = { ...current, [key]: value } as DokterForm;
+    const ubahAkun = (value: string) => {
+        const dipilih = akun.find((item) => String(item.id) === value);
 
-            if (key === 'peran' && value === 'umum') {
-                next.spesialisasi = '';
-            }
+        form.setData((current) => ({
+            ...current,
+            user_id: value,
+            nama: dipilih?.name ?? current.nama,
+            peran: dipilih ? (dipilih.role === 'spesialis' ? 'spesialis' : 'umum') : current.peran,
+        }));
+        form.clearErrors('user_id');
+    };
 
-            return next;
-        });
-        setErrors((current) => ({ ...current, [key]: undefined }));
+    const ubahPeran = (value: PeranDokter) => {
+        form.setData((current) => ({
+            ...current,
+            peran: value,
+            spesialisasi: value === 'umum' ? '' : current.spesialisasi,
+        }));
+        form.clearErrors();
     };
 
     const simpan: FormEventHandler = (event) => {
         event.preventDefault();
 
-        const next: DokterErrors = {};
-        const email = form.email.trim();
-        const nama = form.nama.trim();
-
-        if (nama === '') {
-            next.nama = 'Nama dokter wajib diisi.';
-        }
-
-        if (email === '') {
-            next.email = 'Email akun wajib diisi.';
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            next.email = 'Format email tidak valid.';
-        } else if (dokterList.some((dokter) => dokter.email.toLowerCase() === email.toLowerCase() && dokter.id !== editingId)) {
-            next.email = 'Email sudah dipakai dokter lain.';
-        }
-
-        if (form.peran === 'spesialis' && form.spesialisasi === '') {
-            next.spesialisasi = 'Spesialisasi wajib dipilih untuk dokter spesialis.';
-        }
-
-        if (form.faskes === '') {
-            next.faskes = 'Faskes wajib dipilih.';
-        }
-
-        if (Object.keys(next).length > 0) {
-            setErrors(next);
-
-            return;
-        }
-
-        const data: Omit<DokterItem, 'id' | 'jadwal' | 'konsultasi'> = {
-            nama,
-            email,
-            peran: form.peran,
-            spesialisasi: form.peran === 'spesialis' ? form.spesialisasi : null,
-            faskes: form.faskes,
-            status: form.status,
+        const options = {
+            preserveScroll: true,
+            onSuccess: () => {
+                setDialogOpen(false);
+                setEditingId(null);
+                form.reset();
+            },
         };
 
         if (editingId !== null) {
-            setDokterList((current) => current.map((dokter) => (dokter.id === editingId ? { ...dokter, ...data } : dokter)));
-            setFlash(`Data ${nama} berhasil diperbarui.`);
+            form.patch(route('admin.dokter.update', editingId), options);
         } else {
-            const idBaru = Math.max(0, ...dokterList.map((dokter) => dokter.id)) + 1;
-
-            setDokterList((current) => [{ id: idBaru, ...data, jadwal: 0, konsultasi: 0 }, ...current]);
-            setFlash(`Dokter ${nama} berhasil ditambahkan.`);
+            form.post(route('admin.dokter.store'), options);
         }
-
-        setDialogOpen(false);
-        setErrors({});
     };
 
     const judulDialog = editingId === null ? 'Tambah dokter' : 'Edit data dokter';
@@ -378,14 +300,24 @@ export default function Dokter() {
                 </Link>
             </nav>
 
-            {flash && (
+            {flash?.success && (
                 <div
                     role="status"
                     aria-live="polite"
                     className="border-tk-green-500/35 bg-tk-green-500/10 text-tk-green-500 dark:text-tk-accent mb-5 flex items-start gap-3 rounded-[18px] border px-4 py-3 text-sm font-medium"
                 >
                     <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                    <p>{flash}</p>
+                    <p>{flash.success}</p>
+                </div>
+            )}
+
+            {flash?.error && (
+                <div
+                    role="alert"
+                    className="border-tk-danger/35 bg-tk-danger/10 text-tk-danger mb-5 flex items-start gap-3 rounded-[18px] border px-4 py-3 text-sm font-medium"
+                >
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                    <p>{flash.error}</p>
                 </div>
             )}
 
@@ -399,8 +331,8 @@ export default function Dokter() {
                             Admin mengelola data kredensial dokter
                         </h2>
                         <p className="mt-1 text-[12px] leading-relaxed text-[var(--tk-muted)]">
-                            Spesialisasi, faskes, dan status aktif diatur di sini karena menentukan penjadwalan dan arah konsultasi. Dokter melengkapi
-                            kontak sendiri dan mengatur jadwal praktik melalui halaman profilnya.
+                            Spesialisasi, faskes, dan status aktif diatur di sini karena menentukan penjadwalan dan arah konsultasi. Profil dokter
+                            terhubung ke akun staff yang dibuat lebih dulu.
                         </p>
                         <Link
                             href={route('admin.pengguna')}
@@ -433,7 +365,7 @@ export default function Dokter() {
                     setDialogOpen(next);
 
                     if (!next) {
-                        setErrors({});
+                        form.clearErrors();
                     }
                 }}
             >
@@ -567,35 +499,57 @@ export default function Dokter() {
 
                     <form onSubmit={simpan} className="grid gap-4">
                         <div className="grid gap-2">
+                            <Label htmlFor="dokter-akun">Akun dokter</Label>
+                            <div className="relative">
+                                <select
+                                    id="dokter-akun"
+                                    required
+                                    value={form.data.user_id}
+                                    onChange={(event) => ubahAkun(event.target.value)}
+                                    disabled={form.processing}
+                                    className={cn(authInputClass, 'appearance-none pr-10')}
+                                >
+                                    <option value="">Pilih akun dokter</option>
+                                    {akun.map((item) => {
+                                        const sudahTertaut = item.tertaut && String(item.id) !== form.data.user_id;
+
+                                        return (
+                                            <option key={item.id} value={item.id} disabled={sudahTertaut}>
+                                                {item.name} — {item.email}
+                                                {sudahTertaut ? ' (sudah tertaut)' : ''}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                                <ChevronDown
+                                    className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-[var(--tk-muted)]"
+                                    aria-hidden="true"
+                                />
+                            </div>
+                            <p className="text-[11px] text-[var(--tk-muted)]">
+                                Akun login dibuat lebih dulu di{' '}
+                                <Link href={route('admin.pengguna')} className="text-tk-green-500 dark:text-tk-accent font-semibold hover:underline">
+                                    halaman Kelola pengguna
+                                </Link>
+                                . Hanya akun dokter yang dapat dipilih.
+                            </p>
+                            <InputError message={form.errors.user_id} className="text-tk-danger" />
+                        </div>
+
+                        <div className="grid gap-2">
                             <Label htmlFor="dokter-nama">Nama lengkap</Label>
                             <Input
                                 id="dokter-nama"
                                 type="text"
                                 required
-                                autoFocus
                                 autoComplete="name"
-                                value={form.nama}
-                                onChange={(event) => ubahField('nama', event.target.value)}
+                                value={form.data.nama}
+                                onChange={(event) => form.setData('nama', event.target.value)}
+                                disabled={form.processing}
                                 placeholder="Contoh: dr. Ayu Lestari, Sp.A"
                                 className={authInputClass}
                             />
-                            <InputError message={errors.nama} className="text-tk-danger" />
-                        </div>
-
-                        <div className="grid gap-2">
-                            <Label htmlFor="dokter-email">Email akun</Label>
-                            <Input
-                                id="dokter-email"
-                                type="email"
-                                required
-                                autoComplete="email"
-                                value={form.email}
-                                onChange={(event) => ubahField('email', event.target.value)}
-                                placeholder="nama@telekarang.test"
-                                className={authInputClass}
-                            />
-                            <p className="text-[11px] text-[var(--tk-muted)]">Akun login dibuat lebih dulu di halaman Kelola pengguna.</p>
-                            <InputError message={errors.email} className="text-tk-danger" />
+                            <InputError message={form.errors.nama} className="text-tk-danger" />
                         </div>
 
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -605,8 +559,9 @@ export default function Dokter() {
                                     <select
                                         id="dokter-peran"
                                         required
-                                        value={form.peran}
-                                        onChange={(event) => ubahField('peran', event.target.value)}
+                                        value={form.data.peran}
+                                        onChange={(event) => ubahPeran(event.target.value as PeranDokter)}
+                                        disabled={form.processing}
                                         className={cn(authInputClass, 'appearance-none pr-10')}
                                     >
                                         <option value="umum">Dokter umum</option>
@@ -617,7 +572,7 @@ export default function Dokter() {
                                         aria-hidden="true"
                                     />
                                 </div>
-                                <InputError message={errors.peran} className="text-tk-danger" />
+                                <InputError message={form.errors.peran} className="text-tk-danger" />
                             </div>
 
                             <div className="grid gap-2">
@@ -625,12 +580,12 @@ export default function Dokter() {
                                 <div className="relative">
                                     <select
                                         id="dokter-spesialisasi"
-                                        value={form.spesialisasi}
-                                        onChange={(event) => ubahField('spesialisasi', event.target.value)}
-                                        disabled={form.peran === 'umum'}
+                                        value={form.data.spesialisasi}
+                                        onChange={(event) => form.setData('spesialisasi', event.target.value)}
+                                        disabled={form.processing || form.data.peran === 'umum'}
                                         className={cn(authInputClass, 'appearance-none pr-10 disabled:cursor-not-allowed disabled:opacity-60')}
                                     >
-                                        <option value="">{form.peran === 'umum' ? 'Tidak diperlukan' : 'Pilih spesialisasi'}</option>
+                                        <option value="">{form.data.peran === 'umum' ? 'Tidak diperlukan' : 'Pilih spesialisasi'}</option>
                                         {SPESIALISASI.map((value) => (
                                             <option key={value} value={value}>
                                                 {value}
@@ -642,8 +597,10 @@ export default function Dokter() {
                                         aria-hidden="true"
                                     />
                                 </div>
-                                {form.peran === 'spesialis' && <p className="text-[11px] text-[var(--tk-muted)]">Wajib untuk dokter spesialis.</p>}
-                                <InputError message={errors.spesialisasi} className="text-tk-danger" />
+                                {form.data.peran === 'spesialis' && (
+                                    <p className="text-[11px] text-[var(--tk-muted)]">Wajib untuk dokter spesialis.</p>
+                                )}
+                                <InputError message={form.errors.spesialisasi} className="text-tk-danger" />
                             </div>
                         </div>
 
@@ -654,8 +611,9 @@ export default function Dokter() {
                                     <select
                                         id="dokter-faskes"
                                         required
-                                        value={form.faskes}
-                                        onChange={(event) => ubahField('faskes', event.target.value)}
+                                        value={form.data.faskes}
+                                        onChange={(event) => form.setData('faskes', event.target.value)}
+                                        disabled={form.processing}
                                         className={cn(authInputClass, 'appearance-none pr-10')}
                                     >
                                         <option value="">Pilih faskes</option>
@@ -670,7 +628,7 @@ export default function Dokter() {
                                         aria-hidden="true"
                                     />
                                 </div>
-                                <InputError message={errors.faskes} className="text-tk-danger" />
+                                <InputError message={form.errors.faskes} className="text-tk-danger" />
                             </div>
 
                             <div className="grid gap-2">
@@ -679,8 +637,9 @@ export default function Dokter() {
                                     <select
                                         id="dokter-status"
                                         required
-                                        value={form.status}
-                                        onChange={(event) => ubahField('status', event.target.value)}
+                                        value={form.data.status}
+                                        onChange={(event) => form.setData('status', event.target.value as StatusDokter)}
+                                        disabled={form.processing}
                                         className={cn(authInputClass, 'appearance-none pr-10')}
                                     >
                                         <option value="aktif">Aktif</option>
@@ -692,27 +651,30 @@ export default function Dokter() {
                                     />
                                 </div>
                                 <p className="text-[11px] text-[var(--tk-muted)]">Nonaktifkan agar dokter tidak muncul di jadwal pasien.</p>
-                                <InputError message={errors.status} className="text-tk-danger" />
+                                <InputError message={form.errors.status} className="text-tk-danger" />
                             </div>
                         </div>
 
                         <DialogFooter className="mt-1 gap-2">
                             <p className="mr-auto max-w-[26ch] text-[10px] leading-snug text-[var(--tk-muted)]">
-                                Pratinjau frontend: perubahan hanya tersimpan selama halaman ini dibuka.
+                                Perubahan langsung tersimpan ke database.
                             </p>
                             <DialogClose asChild>
                                 <button
                                     type="button"
-                                    className="min-h-11 rounded-full border border-[var(--tk-glass-border)] px-5 text-sm font-semibold"
+                                    disabled={form.processing}
+                                    className="min-h-11 rounded-full border border-[var(--tk-glass-border)] px-5 text-sm font-semibold disabled:opacity-50"
                                 >
                                     Batal
                                 </button>
                             </DialogClose>
                             <button
                                 type="submit"
-                                className="bg-tk-teal-700 dark:bg-tk-accent dark:text-tk-deep inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold text-white"
+                                disabled={form.processing}
+                                className="bg-tk-teal-700 dark:bg-tk-accent dark:text-tk-deep inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold text-white disabled:opacity-60"
                             >
-                                {editingId === null ? 'Tambah dokter' : 'Simpan perubahan'}
+                                {form.processing && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
+                                {form.processing ? 'Menyimpan...' : editingId === null ? 'Tambah dokter' : 'Simpan perubahan'}
                             </button>
                         </DialogFooter>
                     </form>
@@ -754,25 +716,25 @@ export default function Dokter() {
                     </div>
                 ) : (
                     <ul>
-                        {dokterTampil.map((dokter) => {
-                            const metaPeran = peranMeta[dokter.peran];
+                        {dokterTampil.map((item) => {
+                            const metaPeran = peranMeta[item.peran];
                             const PeranIcon = metaPeran.icon;
-                            const metaStatus = statusMeta[dokter.status];
+                            const metaStatus = statusMeta[item.status];
                             const StatusIcon = metaStatus.icon;
-                            const latar = perluDilengkapi(dokter);
+                            const latar = perluDilengkapi(item);
 
                             return (
                                 <li
-                                    key={dokter.id}
+                                    key={item.id}
                                     className="grid gap-3 border-b border-[var(--tk-glass-border)] p-4 last:border-b-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:gap-4 lg:px-5"
                                 >
                                     <div className="flex min-w-0 items-start gap-3">
                                         <span className="bg-tk-teal-700/[0.08] text-tk-teal-700 dark:bg-tk-accent/10 dark:text-tk-accent border-tk-green-500/20 grid size-11 shrink-0 place-items-center rounded-full border text-[12px] font-bold">
-                                            {initials(dokter.nama)}
+                                            {initials(item.nama)}
                                         </span>
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <p className="truncate text-sm font-bold">{dokter.nama}</p>
+                                                <p className="truncate text-sm font-bold">{item.nama}</p>
                                                 <span
                                                     className={cn(
                                                         'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold',
@@ -802,36 +764,26 @@ export default function Dokter() {
                                             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[var(--tk-muted)]">
                                                 <span className="inline-flex items-center gap-1">
                                                     <BriefcaseMedical className="size-3.5 shrink-0" aria-hidden="true" />
-                                                    {dokter.peran === 'spesialis'
-                                                        ? (dokter.spesialisasi ?? 'Spesialisasi belum diisi')
-                                                        : 'Dokter umum'}
+                                                    {item.peran === 'spesialis' ? (item.spesialisasi ?? 'Spesialisasi belum diisi') : 'Dokter umum'}
                                                 </span>
                                                 <span className="inline-flex items-center gap-1">
                                                     <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
-                                                    {dokter.faskes || 'Faskes belum diisi'}
+                                                    {item.faskes || 'Faskes belum diisi'}
                                                 </span>
                                             </p>
 
                                             <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--tk-muted)]">
                                                 <Mail className="size-3 shrink-0" aria-hidden="true" />
-                                                {dokter.email}
+                                                {item.email ?? 'Email belum tersedia'}
                                             </p>
                                         </div>
                                     </div>
 
                                     <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--tk-page-alt)] px-3 py-1.5 text-[10px] font-semibold text-[var(--tk-muted)]">
-                                            <CalendarDays className="size-3.5" aria-hidden="true" />
-                                            {formatAngka.format(dokter.jadwal)} jadwal
-                                        </span>
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--tk-page-alt)] px-3 py-1.5 text-[10px] font-semibold text-[var(--tk-muted)]">
-                                            <ClipboardList className="size-3.5" aria-hidden="true" />
-                                            {formatAngka.format(dokter.konsultasi)} konsultasi
-                                        </span>
                                         <button
                                             type="button"
-                                            onClick={() => bukaEdit(dokter)}
-                                            aria-label={`Edit data ${dokter.nama}`}
+                                            onClick={() => bukaEdit(item)}
+                                            aria-label={`Edit data ${item.nama}`}
                                             className={cn(
                                                 'inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-[11px] font-semibold transition-colors',
                                                 latar

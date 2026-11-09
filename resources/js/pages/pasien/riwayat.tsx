@@ -16,7 +16,7 @@ import {
 import { useState } from 'react';
 
 import { Input } from '@/components/ui/input';
-import { konsultasiPasien, modeKonsultasiLabels, statusKonsultasiLabels } from '@/data/konsultasi-pasien';
+import { modeKonsultasiLabels, semuaKonsultasiPasien, statusKonsultasiLabels } from '@/data/konsultasi-pasien';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { cn } from '@/lib/utils';
 
@@ -47,13 +47,14 @@ export default function RiwayatKonsultasi() {
     const [q, setQ] = useState('');
     const [filter, setFilter] = useState<FilterHasil>('semua');
 
-    const total = konsultasiPasien.length;
-    const terhindarkan = konsultasiPasien.filter((item) => !item.hasil.keputusanRujuk).length;
+    const daftarKonsultasi = semuaKonsultasiPasien();
+    const total = daftarKonsultasi.length;
+    const terhindarkan = daftarKonsultasi.filter((item) => !item.hasil.keputusanRujuk).length;
     const dirujuk = total - terhindarkan;
     const persenTerhindarkan = total > 0 ? Math.round((terhindarkan / total) * 100) : 0;
 
     const kataKunci = q.trim().toLowerCase();
-    const tersaring = konsultasiPasien.filter((item) => {
+    const tersaring = daftarKonsultasi.filter((item) => {
         const cocokPencarian =
             kataKunci.length === 0 ||
             [item.dokter, item.spesialisasi, item.hasil.icd10Kode, item.hasil.icd10Nama, item.keluhan].join(' ').toLowerCase().includes(kataKunci);

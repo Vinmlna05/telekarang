@@ -35,7 +35,10 @@ import {
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 
 import InputError from '@/components/input-error';
+import KeputusanRujukBanner from '@/components/keputusan-rujuk-banner';
+import ResepObatCard from '@/components/resep-obat-card';
 import { Input } from '@/components/ui/input';
+import { bacaHasilSpesialis, type HasilSpesialisTersimpan } from '@/data/hasil-spesialis';
 import {
     cariKonsultasiRuang,
     labelPengirimRuang,
@@ -259,6 +262,7 @@ export default function RuangKonsultasiSpesialis({ konsultasiId }: RuangKonsulta
     const [tersalin, setTersalin] = useState(false);
     const [info, setInfo] = useState<string | null>(null);
     const [penyimpananPenuh, setPenyimpananPenuh] = useState(false);
+    const [hasilTersimpan, setHasilTersimpan] = useState<HasilSpesialisTersimpan | null>(null);
 
     const ujungChat = useRef<HTMLDivElement>(null);
     const semuaPesan = [...data.pesan, ...pesanLokal];
@@ -284,6 +288,7 @@ export default function RuangKonsultasiSpesialis({ konsultasiId }: RuangKonsulta
         setAlasanMode(alasanModeAwal(terdeteksi.status === 'stabil' ? data.mode : 'teks', terdeteksi.alasan));
         setInfo(null);
         setPenyimpananPenuh(false);
+        setHasilTersimpan(bacaHasilSpesialis(data.id));
     }, [data.id, data.mode, data.status]);
 
     useEffect(() => {
@@ -934,6 +939,18 @@ export default function RuangKonsultasiSpesialis({ konsultasiId }: RuangKonsulta
                             Hasil konsultasi wajib memuat diagnosis ICD-10 dan keputusan rujuk/tidak.
                         </p>
                     </section>
+
+                    {hasilTersimpan && (
+                        <div className="grid gap-3">
+                            <KeputusanRujukBanner
+                                keputusanRujuk={hasilTersimpan.keputusanRujuk}
+                                alasanRujuk={hasilTersimpan.alasanRujuk}
+                                biayaRujukan={hasilTersimpan.biayaRujukan}
+                                konteks="dokter"
+                            />
+                            {!hasilTersimpan.keputusanRujuk && <ResepObatCard resep={hasilTersimpan.resep} selaluTampil />}
+                        </div>
+                    )}
 
                     <section aria-labelledby="data-skrining" className={cn('rounded-[24px] p-5', glass)}>
                         <div className="flex items-start justify-between gap-2">

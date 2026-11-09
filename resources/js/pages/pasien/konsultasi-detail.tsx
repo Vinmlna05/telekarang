@@ -25,6 +25,8 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 
 import ConnectionBadge from '@/components/connection-badge';
 import InputError from '@/components/input-error';
+import KeputusanRujukBanner from '@/components/keputusan-rujuk-banner';
+import ResepObatCard from '@/components/resep-obat-card';
 import { Input } from '@/components/ui/input';
 import {
     cariKonsultasi,
@@ -68,14 +70,6 @@ function inisial(nama: string, abaikanGelar = false): string {
 
 function angkaDesimal(nilai: number): string {
     return nilai.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
-function formatRupiah(nilai: number): string {
-    return new Intl.NumberFormat('id-ID', {
-        style: 'currency',
-        currency: 'IDR',
-        maximumFractionDigits: 0,
-    }).format(nilai);
 }
 
 export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps) {
@@ -414,49 +408,17 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
                             <p className="mt-1.5 text-[11px] leading-relaxed">{data.hasil.saran}</p>
                         </div>
 
-                        <div
-                            className={cn(
-                                'mt-4 rounded-2xl border p-4',
-                                data.hasil.keputusanRujuk ? 'border-tk-warning/30 bg-tk-warning/10' : 'border-tk-green-500/30 bg-tk-green-500/[0.08]',
-                            )}
-                        >
-                            <div className="flex items-start gap-3">
-                                <span
-                                    className={cn(
-                                        'grid size-9 shrink-0 place-items-center rounded-full',
-                                        data.hasil.keputusanRujuk
-                                            ? 'bg-tk-warning/15 text-tk-warning'
-                                            : 'text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12]',
-                                    )}
-                                >
-                                    {data.hasil.keputusanRujuk ? (
-                                        <MapPin className="size-4" aria-hidden="true" />
-                                    ) : (
-                                        <ShieldCheck className="size-4" aria-hidden="true" />
-                                    )}
-                                </span>
-                                <div className="min-w-0">
-                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Keputusan</p>
-                                    <p className={cn('mt-0.5 text-sm font-bold', data.hasil.keputusanRujuk && 'text-tk-warning')}>
-                                        {data.hasil.keputusanRujuk ? 'Perlu dirujuk' : 'Tidak dirujuk'}
-                                    </p>
-                                    {data.hasil.keputusanRujuk ? (
-                                        <>
-                                            <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">{data.hasil.alasanRujuk}</p>
-                                            {data.hasil.biayaRujukan !== null && (
-                                                <p className="mt-2 inline-flex rounded-full bg-[var(--tk-glass)] px-2.5 py-1 text-[10px] font-semibold">
-                                                    Estimasi biaya rujukan: {formatRupiah(data.hasil.biayaRujukan)}
-                                                </p>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                            Keluhan dapat ditangani di Puskesmas Pulau Karang. Kasus ini tercatat sebagai rujukan terhindarkan.
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+                        <KeputusanRujukBanner
+                            keputusanRujuk={data.hasil.keputusanRujuk}
+                            alasanRujuk={data.hasil.alasanRujuk}
+                            biayaRujukan={data.hasil.biayaRujukan}
+                            konteks="pasien"
+                            className="mt-4"
+                        />
+
+                        {!data.hasil.keputusanRujuk && (
+                            <ResepObatCard resep={data.hasil.resep} judul="Obat dari puskesmas" selaluTampil className="mt-4" />
+                        )}
 
                         <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] p-3.5">
                             <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Tindak lanjut puskesmas</p>

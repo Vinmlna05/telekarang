@@ -16,6 +16,7 @@ import {
     MapPin,
     Pencil,
     Phone,
+    Pill,
     Ruler,
     Save,
     Scale,
@@ -26,12 +27,14 @@ import {
     Wifi,
     Wind,
 } from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import InputError from '@/components/input-error';
+import ResepObatCard from '@/components/resep-obat-card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { cariKonsultasiPerawat } from '@/data/konsultasi-perawat';
+import { cariKonsultasiPerawatDenganHasil } from '@/data/konsultasi-perawat';
+import { tambahNotifikasi } from '@/data/notifikasi';
 import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
 
@@ -39,7 +42,23 @@ interface TindakLanjutProps {
     konsultasiId: number;
 }
 
-type FormErrors = Partial<Record<'tanggal' | 'tindakan' | 'biaya' | 'pendamping' | 'catatan' | 'persiapan' | 'konfirmasi', string>>;
+type FormErrors = Partial<Record<'tanggal' | 'tindakan' | 'biaya' | 'pendamping' | 'catatan' | 'persiapan' | 'konfirmasi' | 'obat', string>>;
+
+type StatusObat = '' | 'DIBERIKAN' | 'BELUM_TERSEDIA';
+
+interface StatusObatTersimpan {
+    id: number;
+    namaObat: string;
+    status: Exclude<StatusObat, ''>;
+    waktu: string;
+    catatan: string;
+}
+
+interface CatatanObat {
+    status: StatusObat;
+    waktu: string;
+    catatan: string;
+}
 
 interface TindakLanjutTersimpan {
     konsultasiId: number;
@@ -50,6 +69,7 @@ interface TindakLanjutTersimpan {
     biaya: string;
     pendamping: string;
     catatan: string;
+    obat: StatusObatTersimpan[];
     dicatatPada: string;
 }
 
@@ -103,6 +123,30 @@ function bacaSimpanan(id: number): TindakLanjutTersimpan | null {
             return null;
         }
 
+        const obat: StatusObatTersimpan[] = Array.isArray(parsed.obat)
+            ? parsed.obat
+                  .filter((nilai): nilai is StatusObatTersimpan => {
+                      if (!nilai || typeof nilai !== 'object') {
+                          return false;
+                      }
+
+                      const item = nilai as Partial<StatusObatTersimpan>;
+
+                      return (
+                          typeof item.id === 'number' &&
+                          typeof item.namaObat === 'string' &&
+                          (item.status === 'DIBERIKAN' || item.status === 'BELUM_TERSEDIA')
+                      );
+                  })
+                  .map((item) => ({
+                      id: item.id,
+                      namaObat: item.namaObat,
+                      status: item.status,
+                      waktu: typeof item.waktu === 'string' ? item.waktu : '',
+                      catatan: typeof item.catatan === 'string' ? item.catatan : '',
+                  }))
+            : [];
+
         return {
             konsultasiId: id,
             rujuk: parsed.rujuk === true,
@@ -112,6 +156,7 @@ function bacaSimpanan(id: number): TindakLanjutTersimpan | null {
             biaya: typeof parsed.biaya === 'string' ? parsed.biaya : '',
             pendamping: typeof parsed.pendamping === 'string' ? parsed.pendamping : '',
             catatan: parsed.catatan,
+            obat,
             dicatatPada: typeof parsed.dicatatPada === 'string' ? parsed.dicatatPada : new Date().toISOString(),
         };
     } catch {
@@ -185,10 +230,29 @@ function tanggalHariIni(): string {
     return new Date().toISOString().slice(0, 10);
 }
 
+function petaCatatanObat(daftar: { id: number }[], tersimpan: StatusObatTersimpan[] = []): Record<number, CatatanObat> {
+    const peta: Record<number, CatatanObat> = {};
+
+    daftar.forEach((item) => {
+        const sebelumnya = tersimpan.find((obat) => obat.id === item.id);
+
+        peta[item.id] = {
+            status: sebelumnya?.status ?? '',
+            waktu: sebelumnya?.waktu ?? '',
+            catatan: sebelumnya?.catatan ?? '',
+        };
+    });
+
+    return peta;
+}
+
 export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps) {
-    const data = cariKonsultasiPerawat(konsultasiId);
+    const data = cariKonsultasiPerawatDenganHasil(konsultasiId);
     const hasil = data.hasil;
     const rujuk = hasil?.keputusanRujuk === true;
+    const daftarObat = hasil?.resep?.perluObat ? hasil.resep.items : [];
+    const daftarObatRef = useRef(daftarObat);
+    daftarObatRef.current = daftarObat;
 
     const [tanggal, setTanggal] = useState(tanggalHariIni);
     const [tindakan, setTindakan] = useState<string[]>([]);
@@ -197,6 +261,7 @@ export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps)
     const [pendamping, setPendamping] = useState('');
     const [persiapan, setPersiapan] = useState<string[]>([]);
     const [catatan, setCatatan] = useState('');
+    const [catatanObat, setCatatanObat] = useState<Record<number, CatatanObat>>({});
     const [konfirmasi, setKonfirmasi] = useState(false);
     const [errors, setErrors] = useState<FormErrors>({});
     const [berhasil, setBerhasil] = useState(false);
@@ -205,9 +270,11 @@ export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps)
 
     useEffect(() => {
         const simpanan = bacaSimpanan(data.id);
+        const daftarObatSaatIni = daftarObatRef.current;
 
         if (!simpanan) {
             setTersimpan(null);
+            setCatatanObat(petaCatatanObat(daftarObatSaatIni));
             return;
         }
 
@@ -219,12 +286,26 @@ export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps)
         setPendamping(simpanan.pendamping);
         setPersiapan(simpanan.rujuk ? persiapanRujukan : []);
         setCatatan(simpanan.catatan);
+        setCatatanObat(petaCatatanObat(daftarObatSaatIni, simpanan.obat));
         setKonfirmasi(true);
     }, [data.id]);
 
     function toggleDaftar(item: string, daftar: string[], setDaftar: (nilai: string[]) => void, kunci: 'tindakan' | 'persiapan') {
         setDaftar(daftar.includes(item) ? daftar.filter((nilai) => nilai !== item) : [...daftar, item]);
         setErrors((previous) => ({ ...previous, [kunci]: undefined }));
+    }
+
+    function ubahCatatanObat(id: number, perubahan: Partial<CatatanObat>) {
+        setCatatanObat((previous) => ({
+            ...previous,
+            [id]: {
+                status: previous[id]?.status ?? '',
+                waktu: previous[id]?.waktu ?? '',
+                catatan: previous[id]?.catatan ?? '',
+                ...perubahan,
+            },
+        }));
+        setErrors((previous) => ({ ...previous, obat: undefined }));
     }
 
     function simpanTindakLanjut(event: FormEvent<HTMLFormElement>) {
@@ -238,6 +319,14 @@ export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps)
 
         if (!rujuk && tindakan.length === 0) {
             nextErrors.tindakan = 'Pilih minimal satu tindakan yang dilakukan.';
+        }
+
+        if (!rujuk && daftarObat.length > 0) {
+            const belumLengkap = daftarObat.some((item) => !catatanObat[item.id]?.status);
+
+            if (belumLengkap) {
+                nextErrors.obat = 'Tandai setiap obat sebagai sudah diberikan atau belum tersedia.';
+            }
         }
 
         if (rujuk) {
@@ -270,6 +359,17 @@ export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps)
             return;
         }
 
+        const obatFinal: StatusObatTersimpan[] = rujuk
+            ? []
+            : daftarObat.map((item) => ({
+                  id: item.id,
+                  namaObat: item.namaObat,
+                  status: (catatanObat[item.id]?.status || 'BELUM_TERSEDIA') as Exclude<StatusObat, ''>,
+                  waktu: catatanObat[item.id]?.waktu ?? '',
+                  catatan: catatanObat[item.id]?.catatan.trim() ?? '',
+              }));
+
+        const waktuSekarang = new Date();
         const rekaman: TindakLanjutTersimpan = {
             konsultasiId: data.id,
             rujuk,
@@ -279,13 +379,32 @@ export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps)
             biaya,
             pendamping: pendamping.trim(),
             catatan: catatan.trim(),
-            dicatatPada: new Date().toISOString(),
+            obat: obatFinal,
+            dicatatPada: waktuSekarang.toISOString(),
         };
 
         try {
             window.localStorage.setItem(kunciSimpanan(data.id), JSON.stringify(rekaman));
         } catch {
             // Penyimpanan lokal tidak tersedia; catatan tetap ditampilkan pada sesi ini.
+        }
+
+        if (!rujuk && obatFinal.length > 0) {
+            const diberikan = obatFinal.filter((obat) => obat.status === 'DIBERIKAN').length;
+            const belum = obatFinal.length - diberikan;
+
+            tambahNotifikasi('pasien', {
+                id: `obat-${data.id}`,
+                tipe: 'OBAT_DIBERIKAN',
+                judul: 'Status obat sudah diperbarui',
+                isi:
+                    belum > 0
+                        ? `${diberikan} obat sudah diberikan di puskesmas. ${belum} obat belum tersedia dan akan diinformasikan kembali.`
+                        : 'Semua obat pada resep sudah diberikan di puskesmas.',
+                url: `/pasien/konsultasi/${data.id}`,
+                dibaca: false,
+                waktu: waktuSekarang.toISOString(),
+            });
         }
 
         setTersimpan(rekaman);
@@ -429,6 +548,37 @@ export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps)
                                     <dd className="mt-1 leading-relaxed">{catatanCatat}</dd>
                                 </div>
                             </dl>
+
+                            {!rujuk && rekaman && rekaman.obat.length > 0 && (
+                                <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] p-4">
+                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Status obat</p>
+                                    <ul className="mt-2 grid gap-2">
+                                        {rekaman.obat.map((obat) => (
+                                            <li
+                                                key={obat.id}
+                                                className="flex items-start justify-between gap-3 rounded-xl bg-[var(--tk-page-alt)] px-3 py-2"
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="text-[11px] font-bold">{obat.namaObat}</p>
+                                                    {obat.catatan && <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">{obat.catatan}</p>}
+                                                </div>
+                                                <span
+                                                    className={cn(
+                                                        'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold',
+                                                        obat.status === 'DIBERIKAN'
+                                                            ? 'bg-tk-success/15 text-tk-success'
+                                                            : 'bg-tk-warning/15 text-tk-warning',
+                                                    )}
+                                                >
+                                                    {obat.status === 'DIBERIKAN'
+                                                        ? `Diberikan${obat.waktu ? ` ${obat.waktu}` : ''}`
+                                                        : 'Belum tersedia'}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
 
                             <div className={cn('mt-4 flex items-start gap-2.5 rounded-2xl p-3.5', rujuk ? 'bg-tk-warning/10' : 'bg-tk-success/10')}>
                                 <span
@@ -738,6 +888,8 @@ export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps)
                                 </div>
                             ) : (
                                 <div className="mt-5 grid gap-4">
+                                    {daftarObat.length > 0 && <ResepObatCard resep={hasil.resep} judul="Resep dokter spesialis" />}
+
                                     <fieldset>
                                         <legend className="text-[11px] font-bold">
                                             Tindakan yang dilakukan <span className="text-tk-danger">*</span>
@@ -760,6 +912,125 @@ export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps)
                                         </div>
                                         <InputError message={errors.tindakan} className="text-tk-danger mt-1.5 text-[10px]" />
                                     </fieldset>
+
+                                    {daftarObat.length > 0 && (
+                                        <fieldset>
+                                            <legend className="flex w-full items-center justify-between gap-2 text-[11px] font-bold">
+                                                <span>
+                                                    Status obat dari dokter spesialis <span className="text-tk-danger">*</span>
+                                                </span>
+                                                <span className="text-[10px] font-semibold text-[var(--tk-muted)]">
+                                                    {daftarObat.filter((item) => catatanObat[item.id]?.status).length}/{daftarObat.length} ditandai
+                                                </span>
+                                            </legend>
+                                            <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                                Tandai setiap obat apakah sudah diberikan atau belum tersedia di puskesmas.
+                                            </p>
+
+                                            <div className="mt-2 grid gap-2.5">
+                                                {daftarObat.map((item) => {
+                                                    const catatanItem = catatanObat[item.id] ?? { status: '', waktu: '', catatan: '' };
+
+                                                    return (
+                                                        <div
+                                                            key={item.id}
+                                                            className="rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-3.5"
+                                                        >
+                                                            <div className="flex items-start gap-2.5">
+                                                                <span className="bg-tk-green-500/15 text-tk-green-500 dark:text-tk-accent mt-0.5 grid size-8 shrink-0 place-items-center rounded-full">
+                                                                    <Pill className="size-4" aria-hidden="true" />
+                                                                </span>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-xs font-bold">{item.namaObat}</p>
+                                                                    <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">
+                                                                        {[item.dosis, item.frekuensi, item.durasi].filter(Boolean).join(' · ')}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="mt-2.5 grid grid-cols-2 gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    aria-pressed={catatanItem.status === 'DIBERIKAN'}
+                                                                    onClick={() =>
+                                                                        ubahCatatanObat(item.id, {
+                                                                            status: 'DIBERIKAN',
+                                                                            waktu: catatanItem.waktu || new Date().toTimeString().slice(0, 5),
+                                                                        })
+                                                                    }
+                                                                    className={cn(
+                                                                        'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-[10px] font-semibold transition-colors',
+                                                                        catatanItem.status === 'DIBERIKAN'
+                                                                            ? 'border-tk-green-400 bg-tk-green-500/15 text-tk-green-500 dark:text-tk-accent'
+                                                                            : 'border-[var(--tk-glass-border)] text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
+                                                                    )}
+                                                                >
+                                                                    <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                                                                    Sudah diberikan
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    aria-pressed={catatanItem.status === 'BELUM_TERSEDIA'}
+                                                                    onClick={() => ubahCatatanObat(item.id, { status: 'BELUM_TERSEDIA' })}
+                                                                    className={cn(
+                                                                        'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-[10px] font-semibold transition-colors',
+                                                                        catatanItem.status === 'BELUM_TERSEDIA'
+                                                                            ? 'border-tk-warning bg-tk-warning/15 text-tk-warning'
+                                                                            : 'border-[var(--tk-glass-border)] text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
+                                                                    )}
+                                                                >
+                                                                    <AlertTriangle className="size-3.5" aria-hidden="true" />
+                                                                    Belum tersedia
+                                                                </button>
+                                                            </div>
+
+                                                            {catatanItem.status === 'DIBERIKAN' && (
+                                                                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                                                    <label className="text-[10px] font-semibold">
+                                                                        Waktu diberikan
+                                                                        <Input
+                                                                            type="time"
+                                                                            value={catatanItem.waktu}
+                                                                            onChange={(event) =>
+                                                                                ubahCatatanObat(item.id, { waktu: event.target.value })
+                                                                            }
+                                                                            className={cn(inputClass, 'mt-1 h-9 text-xs')}
+                                                                        />
+                                                                    </label>
+                                                                    <label className="text-[10px] font-semibold">
+                                                                        Catatan
+                                                                        <Input
+                                                                            value={catatanItem.catatan}
+                                                                            onChange={(event) =>
+                                                                                ubahCatatanObat(item.id, { catatan: event.target.value })
+                                                                            }
+                                                                            placeholder="Contoh: diberikan setelah makan"
+                                                                            className={cn(inputClass, 'mt-1 h-9 text-xs')}
+                                                                        />
+                                                                    </label>
+                                                                </div>
+                                                            )}
+
+                                                            {catatanItem.status === 'BELUM_TERSEDIA' && (
+                                                                <label className="mt-2 block text-[10px] font-semibold">
+                                                                    Alasan / rencana
+                                                                    <Input
+                                                                        value={catatanItem.catatan}
+                                                                        onChange={(event) =>
+                                                                            ubahCatatanObat(item.id, { catatan: event.target.value })
+                                                                        }
+                                                                        placeholder="Contoh: stok habis, dijadwalkan ambil besok"
+                                                                        className={cn(inputClass, 'mt-1 h-9 text-xs')}
+                                                                    />
+                                                                </label>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <InputError message={errors.obat} className="text-tk-danger mt-1.5 text-[10px]" />
+                                        </fieldset>
+                                    )}
 
                                     <div>
                                         <label htmlFor="tanggal" className="text-[11px] font-bold">

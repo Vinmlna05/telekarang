@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Models\AuditLog;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,14 @@ class AkunController extends Controller
         }
 
         $user->save();
+
+        AuditLog::catat(
+            $user,
+            'mengubah',
+            'pengguna',
+            (string) $user->id,
+            'Memperbarui data akun sendiri.',
+        );
 
         return to_route('admin.akun')->with('success', 'Data akun berhasil diperbarui.');
     }

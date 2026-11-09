@@ -35,9 +35,10 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 
 import ConnectionBadge from '@/components/connection-badge';
 import InputError from '@/components/input-error';
+import ResepObatCard from '@/components/resep-obat-card';
 import { Input } from '@/components/ui/input';
 import { modeKonsultasiLabels, statusKonsultasiLabels, type ModeKonsultasi, type StatusKonsultasi } from '@/data/konsultasi-pasien';
-import { cariKonsultasiPerawat, type PesanPerawat } from '@/data/konsultasi-perawat';
+import { cariKonsultasiPerawatDenganHasil, type PesanPerawat } from '@/data/konsultasi-perawat';
 import { alasanKoneksi, useConnection } from '@/hooks/use-connection';
 import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { bacaPesanLokal, kompresGambar, simpanPesanLokal } from '@/lib/chat';
@@ -152,7 +153,7 @@ function bisaChat(status: StatusKonsultasi): boolean {
 }
 
 export default function KonsultasiDetailPerawat({ konsultasiId }: KonsultasiDetailProps) {
-    const data = cariKonsultasiPerawat(konsultasiId);
+    const data = cariKonsultasiPerawatDenganHasil(konsultasiId);
     const koneksi = useConnection();
     const kunciPesan = `telekarang:konsultasi-perawat:${data.id}`;
 
@@ -703,6 +704,8 @@ export default function KonsultasiDetailPerawat({ konsultasiId }: KonsultasiDeta
                                     </div>
                                 </div>
                             </div>
+
+                            {!data.hasil.keputusanRujuk && <ResepObatCard resep={data.hasil.resep} selaluTampil className="mt-4" />}
 
                             {data.hasil.tindakLanjut && (
                                 <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] p-3.5">

@@ -1,50 +1,42 @@
-import { Bell, CalendarClock, CheckCheck, ClipboardCheck, FileText, X, type LucideIcon } from 'lucide-react';
+import { Link, usePage } from '@inertiajs/react';
+import { Bell, CheckCheck, FileText, MapPin, Pill, ShieldCheck, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { formatWaktuNotifikasi, labelTipeNotifikasi, urlNotifikasiPeran, type PeranNotifikasi, type TipeNotifikasi } from '@/data/notifikasi';
+import { useNotifikasi } from '@/hooks/use-notifikasi';
 import { cn } from '@/lib/utils';
+import type { SharedData } from '@/types';
 
-interface Notifikasi {
-    id: number;
-    judul: string;
-    isi: string;
-    waktu: string;
-    dibaca: boolean;
-    ikon: LucideIcon;
+const ikonTipe: Record<TipeNotifikasi, LucideIcon> = {
+    HASIL_SPESIALIS: FileText,
+    RESEP_OBAT: Pill,
+    RUJUKAN: MapPin,
+    TIDAK_DIRUJUK: ShieldCheck,
+    OBAT_DIBERIKAN: CheckCheck,
+};
+
+function peranDariRole(role: string | undefined): PeranNotifikasi | null {
+    if (role === 'pasien') {
+        return 'pasien';
+    }
+
+    if (role === 'perawat') {
+        return 'perawat';
+    }
+
+    if (role === 'dokter_umum') {
+        return 'dokter_umum';
+    }
+
+    return null;
 }
 
-const notifikasiAwal: Notifikasi[] = [
-    {
-        id: 1,
-        judul: 'Jadwal konsultasi dikonfirmasi',
-        isi: 'Dokter spesialis mengonfirmasi slot konsultasi. Periksa detail jadwal terbaru.',
-        waktu: '10 menit lalu',
-        dibaca: false,
-        ikon: CalendarClock,
-    },
-    {
-        id: 2,
-        judul: 'Skrining perlu dilengkapi',
-        isi: 'Satu permintaan menunggu data skrining sebelum dapat dikirim ke dokter spesialis.',
-        waktu: '1 jam lalu',
-        dibaca: false,
-        ikon: ClipboardCheck,
-    },
-    {
-        id: 3,
-        judul: 'Hasil konsultasi tersedia',
-        isi: 'Diagnosis ICD-10, saran, dan keputusan rujukan sudah dicatat pada rekam medis.',
-        waktu: 'Kemarin',
-        dibaca: true,
-        ikon: FileText,
-    },
-];
-
 export default function NotificationCenter({ className }: { className?: string }) {
+    const { auth } = usePage<SharedData>().props;
+    const peran = peranDariRole(auth?.user?.role) ?? 'perawat';
+    const { daftar, belumDibaca, tandaiDibaca, tandaiSemuaDibaca } = useNotifikasi(peran);
     const [terbuka, setTerbuka] = useState(false);
-    const [notifikasi, setNotifikasi] = useState<Notifikasi[]>(notifikasiAwal);
     const wadah = useRef<HTMLDivElement>(null);
-
-    const belumDibaca = notifikasi.filter((item) => !item.dibaca).length;
 
     useEffect(() => {
         if (!terbuka) {
@@ -72,8 +64,8 @@ export default function NotificationCenter({ className }: { className?: string }
         };
     }, [terbuka]);
 
-    function tandaiSemuaDibaca() {
-        setNotifikasi((previous) => previous.map((item) => ({ ...item, dibaca: true })));
+    if (!peranDariRole(auth?.user?.role)) {
+        return null;
     }
 
     return (
@@ -128,44 +120,57 @@ export default function NotificationCenter({ className }: { className?: string }
                         </div>
                     </div>
 
-                    <ul className="max-h-[330px] overflow-y-auto">
-                        {notifikasi.map((item) => {
-                            const Ikon = item.ikon;
+                    {daftar.length === 0 ? (
+                        <p className="px-4 py-8 text-center text-[11px] text-[var(--tk-muted)]">Belum ada notifikasi.</p>
+                    ) : (
+                        <ul className="max-h-[330px] overflow-y-auto">
+                            {daftar.map((item) => {
+                                const Ikon = ikonTipe[item.tipe];
 
-                            return (
-                                <li key={item.id} className="border-b border-[var(--tk-glass-border)] last:border-b-0">
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            setNotifikasi((previous) =>
-                                                previous.map((entri) => (entri.id === item.id ? { ...entri, dibaca: true } : entri)),
-                                            )
-                                        }
-                                        className={cn(
-                                            'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--tk-page-alt)]',
-                                            !item.dibaca && 'bg-tk-accent/[0.06]',
-                                        )}
-                                    >
-                                        <span className="text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12] mt-0.5 grid size-8 shrink-0 place-items-center rounded-full">
-                                            <Ikon className="size-4" aria-hidden="true" />
-                                        </span>
-                                        <span className="min-w-0">
-                                            <span className="flex items-center gap-2">
-                                                <span className="truncate text-[11px] font-bold">{item.judul}</span>
-                                                {!item.dibaca && <span className="bg-tk-accent size-1.5 shrink-0 rounded-full" aria-hidden="true" />}
+                                return (
+                                    <li key={item.id} className="border-b border-[var(--tk-glass-border)] last:border-b-0">
+                                        <Link
+                                            href={item.url}
+                                            onClick={() => {
+                                                tandaiDibaca(item.id);
+                                                setTerbuka(false);
+                                            }}
+                                            className={cn(
+                                                'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--tk-page-alt)]',
+                                                !item.dibaca && 'bg-tk-accent/[0.06]',
+                                            )}
+                                        >
+                                            <span className="text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12] mt-0.5 grid size-8 shrink-0 place-items-center rounded-full">
+                                                <Ikon className="size-4" aria-hidden="true" />
                                             </span>
-                                            <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--tk-muted)]">{item.isi}</span>
-                                            <span className="mt-1 block text-[9px] font-semibold text-[var(--tk-muted)]">{item.waktu}</span>
-                                        </span>
-                                    </button>
-                                </li>
-                            );
-                        })}
-                    </ul>
+                                            <span className="min-w-0">
+                                                <span className="flex items-center gap-2">
+                                                    <span className="truncate text-[11px] font-bold">{item.judul}</span>
+                                                    {!item.dibaca && (
+                                                        <span className="bg-tk-accent size-1.5 shrink-0 rounded-full" aria-hidden="true" />
+                                                    )}
+                                                </span>
+                                                <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--tk-muted)]">{item.isi}</span>
+                                                <span className="mt-1 block text-[9px] font-semibold text-[var(--tk-muted)]">
+                                                    {labelTipeNotifikasi[item.tipe]} · {formatWaktuNotifikasi(item.waktu)}
+                                                </span>
+                                            </span>
+                                        </Link>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
 
-                    <p className="border-t border-[var(--tk-glass-border)] px-4 py-2.5 text-[9px] leading-relaxed text-[var(--tk-muted)]">
-                        Notifikasi disimulasikan. Pada produksi, pesan juga dikirim melalui WhatsApp atau SMS.
-                    </p>
+                    <div className="border-t border-[var(--tk-glass-border)] px-4 py-2.5">
+                        <Link
+                            href={urlNotifikasiPeran(peran)}
+                            onClick={() => setTerbuka(false)}
+                            className="text-tk-green-500 dark:text-tk-accent text-[10px] font-bold hover:underline"
+                        >
+                            Lihat semua notifikasi
+                        </Link>
+                    </div>
                 </div>
             )}
         </div>

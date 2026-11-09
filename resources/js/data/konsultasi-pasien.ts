@@ -1,3 +1,5 @@
+import type { Resep } from './resep';
+
 export type StatusKonsultasi =
     | 'MENUNGGU_SKRINING'
     | 'SKRINING_SELESAI'
@@ -35,6 +37,7 @@ export interface HasilKonsultasi {
     alasanRujuk: string | null;
     biayaRujukan: number | null;
     tindakLanjut: string;
+    resep: Resep | null;
     waktu: string;
 }
 
@@ -116,6 +119,23 @@ export const konsultasiPasien: KonsultasiPasien[] = [
             alasanRujuk: null,
             biayaRujukan: null,
             tindakLanjut: 'Kontrol ulang ke puskesmas jika demam lebih dari tiga hari, muncul sesak, atau anak tampak lemas.',
+            resep: {
+                konsultasiId: 1,
+                perluObat: true,
+                catatan: 'Diberikan di puskesmas. Pastikan dosis sesuai berat badan anak.',
+                items: [
+                    {
+                        id: 1,
+                        namaObat: 'Parasetamol sirup',
+                        dosis: '5 ml',
+                        rute: 'Oral',
+                        frekuensi: '3× sehari bila demam',
+                        durasi: '3 hari',
+                        jumlah: '1 botol',
+                        instruksi: 'Berikan setelah makan. Hentikan bila suhu sudah normal.',
+                    },
+                ],
+            },
             waktu: '8 Oktober 2026 · 10.05 WIT',
         },
         pesan: [
@@ -178,6 +198,23 @@ export const konsultasiPasien: KonsultasiPasien[] = [
             alasanRujuk: null,
             biayaRujukan: null,
             tindakLanjut: 'Kontrol tekanan darah di puskesmas setiap minggu. Segera rujuk bila sistol ≥ 180 atau muncul nyeri dada.',
+            resep: {
+                konsultasiId: 2,
+                perluObat: true,
+                catatan: 'Lanjutkan obat rutin yang sudah diminum pasien.',
+                items: [
+                    {
+                        id: 1,
+                        namaObat: 'Amlodipine',
+                        dosis: '5 mg',
+                        rute: 'Oral',
+                        frekuensi: '1× sehari malam',
+                        durasi: '30 hari',
+                        jumlah: '30 tablet',
+                        instruksi: 'Minum rutin, jangan berhenti tanpa arahan dokter.',
+                    },
+                ],
+            },
             waktu: '21 September 2026 · 10.28 WIT',
         },
         pesan: [
@@ -234,6 +271,7 @@ export const konsultasiPasien: KonsultasiPasien[] = [
             alasanRujuk: 'Kemerahan meluas cepat disertai demam tinggi. Puskesmas tidak memiliki fasilitas rawat inap dan antibiotik intravena.',
             biayaRujukan: 850000,
             tindakLanjut: 'Perawat menyiapkan surat rujukan dan koordinasi ambulans kapal. Pasien didampingi keluarga.',
+            resep: null,
             waktu: '14 September 2026 · 09.10 WIT',
         },
         pesan: [
@@ -290,6 +328,33 @@ export const konsultasiPasien: KonsultasiPasien[] = [
             alasanRujuk: null,
             biayaRujukan: null,
             tindakLanjut: 'Kontrol di puskesmas bila nyeri menetap lebih dari satu minggu atau muncul muntah darah.',
+            resep: {
+                konsultasiId: 4,
+                perluObat: true,
+                catatan: 'Diminum sebelum makan.',
+                items: [
+                    {
+                        id: 1,
+                        namaObat: 'Omeprazol',
+                        dosis: '20 mg',
+                        rute: 'Oral',
+                        frekuensi: '2× sehari',
+                        durasi: '7 hari',
+                        jumlah: '14 kapsul',
+                        instruksi: 'Minum 30 menit sebelum makan pagi dan malam.',
+                    },
+                    {
+                        id: 2,
+                        namaObat: 'Sukralfat sirup',
+                        dosis: '10 ml',
+                        rute: 'Oral',
+                        frekuensi: '3× sehari',
+                        durasi: '5 hari',
+                        jumlah: '1 botol',
+                        instruksi: 'Minum saat perut kosong.',
+                    },
+                ],
+            },
             waktu: '2 September 2026 · 11.22 WIT',
         },
         pesan: [
@@ -340,6 +405,33 @@ export const konsultasiPasien: KonsultasiPasien[] = [
             alasanRujuk: null,
             biayaRujukan: null,
             tindakLanjut: 'Kembali segera bila anak lemas, tidak mau minum, mata cekung, atau buang air kecil berkurang.',
+            resep: {
+                konsultasiId: 5,
+                perluObat: true,
+                catatan: 'Tidak perlu antibiotik. Fokus rehidrasi.',
+                items: [
+                    {
+                        id: 1,
+                        namaObat: 'Oralit sachet',
+                        dosis: '1 sachet dilarutkan 200 ml',
+                        rute: 'Oral',
+                        frekuensi: 'Setiap kali BAB cair',
+                        durasi: '3 hari',
+                        jumlah: '6 sachet',
+                        instruksi: 'Berikan sedikit-sedikit tetapi sering.',
+                    },
+                    {
+                        id: 2,
+                        namaObat: 'Zinc sirup',
+                        dosis: '10 ml',
+                        rute: 'Oral',
+                        frekuensi: '1× sehari',
+                        durasi: '10 hari',
+                        jumlah: '1 botol',
+                        instruksi: 'Lanjutkan meski diare sudah membaik.',
+                    },
+                ],
+            },
             waktu: '18 Agustus 2026 · 09.46 WIT',
         },
         pesan: [
@@ -365,6 +457,66 @@ export const konsultasiPasien: KonsultasiPasien[] = [
     },
 ];
 
+const KUNCI_KONSULTASI_LOKAL = 'telekarang:konsultasi-pasien-lokal';
+
+function isKonsultasiPasien(nilai: unknown): nilai is KonsultasiPasien {
+    if (!nilai || typeof nilai !== 'object') {
+        return false;
+    }
+
+    const item = nilai as Partial<KonsultasiPasien>;
+
+    return (
+        typeof item.id === 'number' &&
+        typeof item.nomor === 'string' &&
+        typeof item.dokter === 'string' &&
+        typeof item.status === 'string' &&
+        item.hasil !== null &&
+        typeof item.hasil === 'object'
+    );
+}
+
+export function bacaKonsultasiPasienLokal(): KonsultasiPasien[] {
+    if (typeof window === 'undefined') {
+        return [];
+    }
+
+    try {
+        const mentah = window.localStorage.getItem(KUNCI_KONSULTASI_LOKAL);
+
+        if (!mentah) {
+            return [];
+        }
+
+        const parsed: unknown = JSON.parse(mentah);
+
+        return Array.isArray(parsed) ? parsed.filter(isKonsultasiPasien) : [];
+    } catch {
+        return [];
+    }
+}
+
+export function simpanKonsultasiPasienLokal(item: KonsultasiPasien): void {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    try {
+        const daftar = bacaKonsultasiPasienLokal().filter((entri) => entri.id !== item.id);
+        window.localStorage.setItem(KUNCI_KONSULTASI_LOKAL, JSON.stringify([item, ...daftar]));
+        window.dispatchEvent(new CustomEvent('telekarang:konsultasi-pasien-changed', { detail: { id: item.id } }));
+    } catch {
+        // Penyimpanan lokal tidak tersedia; data tetap tampil pada sesi ini.
+    }
+}
+
+export function semuaKonsultasiPasien(): KonsultasiPasien[] {
+    const lokal = bacaKonsultasiPasienLokal();
+    const idLokal = new Set(lokal.map((item) => item.id));
+
+    return [...lokal, ...konsultasiPasien.filter((item) => !idLokal.has(item.id))];
+}
+
 export function cariKonsultasi(id: number): KonsultasiPasien {
-    return konsultasiPasien.find((item) => item.id === id) ?? konsultasiPasien[0];
+    return semuaKonsultasiPasien().find((item) => item.id === id) ?? konsultasiPasien[0];
 }

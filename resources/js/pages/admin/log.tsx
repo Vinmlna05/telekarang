@@ -18,6 +18,7 @@ import {
     ShieldCheck,
     Stethoscope,
     Trash2,
+    UserRound,
     type LucideIcon,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -29,7 +30,7 @@ import { cn } from '@/lib/utils';
 
 type AksiLog = 'membuat' | 'mengubah' | 'menghapus' | 'login' | 'menyetujui' | 'menolak' | 'mengirim' | 'menyelesaikan';
 type EntitasLog = 'pengguna' | 'dokter' | 'icd10' | 'konsultasi' | 'skrining' | 'jadwal' | 'pasien' | 'sesi';
-type PeranAktor = 'admin' | 'perawat' | 'dokter_umum' | 'spesialis';
+type PeranAktor = 'admin' | 'perawat' | 'dokter_umum' | 'spesialis' | 'pasien' | 'sistem';
 type Periode = '' | 'hari' | 'minggu' | 'bulan';
 
 interface LogItem {
@@ -84,6 +85,16 @@ const peranMeta: Record<PeranAktor, { label: string; icon: LucideIcon; badge: st
         icon: BriefcaseMedical,
         badge: 'border-transparent bg-tk-mint/20 text-tk-teal-700 dark:text-tk-mint',
     },
+    pasien: {
+        label: 'Pasien',
+        icon: UserRound,
+        badge: 'border-transparent bg-[var(--tk-page-alt)] text-[var(--tk-muted)]',
+    },
+    sistem: {
+        label: 'Sistem',
+        icon: Activity,
+        badge: 'border-transparent bg-[var(--tk-page-alt)] text-[var(--tk-muted)]',
+    },
 };
 
 const periodeOptions: { value: Periode; label: string }[] = [
@@ -91,193 +102,6 @@ const periodeOptions: { value: Periode; label: string }[] = [
     { value: 'hari', label: 'Hari ini' },
     { value: 'minggu', label: '7 hari' },
     { value: 'bulan', label: '30 hari' },
-];
-
-function menitLalu(menit: number): string {
-    return new Date(Date.now() - menit * 60_000).toISOString();
-}
-
-const logAwal: LogItem[] = [
-    {
-        id: 18,
-        aktor: 'Reiki Admin',
-        peran: 'admin',
-        aksi: 'membuat',
-        entitas: 'dokter',
-        entitasId: '7',
-        keterangan: 'Menambahkan profil dr. Rina Kartika, Sp.OG sebagai dokter spesialis kandungan.',
-        waktu: menitLalu(4),
-    },
-    {
-        id: 17,
-        aktor: 'Perawat Sari',
-        peran: 'perawat',
-        aksi: 'mengubah',
-        entitas: 'skrining',
-        entitasId: '12',
-        keterangan: 'Memperbarui tanda vital skrining pasien Aisyah Rahmawati.',
-        waktu: menitLalu(18),
-    },
-    {
-        id: 16,
-        aktor: 'dr. Budi Santoso',
-        peran: 'dokter_umum',
-        aksi: 'menyetujui',
-        entitas: 'konsultasi',
-        entitasId: '8',
-        keterangan: 'Meneruskan permintaan konsultasi ke dokter spesialis anak.',
-        waktu: menitLalu(47),
-    },
-    {
-        id: 15,
-        aktor: 'dr. Ayu Lestari, Sp.A',
-        peran: 'spesialis',
-        aksi: 'menyelesaikan',
-        entitas: 'konsultasi',
-        entitasId: '7',
-        keterangan: 'Menyelesaikan konsultasi dengan diagnosis J06.9 dan keputusan tidak rujuk.',
-        waktu: menitLalu(95),
-    },
-    {
-        id: 14,
-        aktor: 'Reiki Admin',
-        peran: 'admin',
-        aksi: 'mengubah',
-        entitas: 'pengguna',
-        entitasId: '14',
-        keterangan: 'Mengubah peran akun Nurdin menjadi perawat.',
-        waktu: menitLalu(150),
-    },
-    {
-        id: 13,
-        aktor: 'Reiki Admin',
-        peran: 'admin',
-        aksi: 'membuat',
-        entitas: 'icd10',
-        entitasId: 'R51',
-        keterangan: 'Menambahkan diagnosis sakit kepala ke data master ICD-10.',
-        waktu: menitLalu(230),
-    },
-    {
-        id: 12,
-        aktor: 'Perawat Sari',
-        peran: 'perawat',
-        aksi: 'mengirim',
-        entitas: 'konsultasi',
-        entitasId: '9',
-        keterangan: 'Mengirim permintaan konsultasi ke dokter spesialis penyakit dalam.',
-        waktu: menitLalu(340),
-    },
-    {
-        id: 11,
-        aktor: 'dr. Budi Santoso',
-        peran: 'dokter_umum',
-        aksi: 'menyetujui',
-        entitas: 'konsultasi',
-        entitasId: '9',
-        keterangan: 'Menyetujui hasil skrining untuk diteruskan ke spesialis.',
-        waktu: menitLalu(26 * 60),
-    },
-    {
-        id: 10,
-        aktor: 'dr. Ayu Lestari, Sp.A',
-        peran: 'spesialis',
-        aksi: 'menolak',
-        entitas: 'konsultasi',
-        entitasId: '6',
-        keterangan: 'Menolak permintaan karena jadwal praktik penuh; pasien diminta memilih slot baru.',
-        waktu: menitLalu(30 * 60),
-    },
-    {
-        id: 9,
-        aktor: 'Reiki Admin',
-        peran: 'admin',
-        aksi: 'menghapus',
-        entitas: 'icd10',
-        entitasId: 'Z00.0',
-        keterangan: 'Menghapus kode yang belum pernah dipakai dari data master ICD-10.',
-        waktu: menitLalu(2 * 24 * 60),
-    },
-    {
-        id: 8,
-        aktor: 'Perawat Sari',
-        peran: 'perawat',
-        aksi: 'membuat',
-        entitas: 'pasien',
-        entitasId: '10',
-        keterangan: 'Mendaftarkan pasien baru tanpa akun atas nama Salim Abdullah.',
-        waktu: menitLalu(3 * 24 * 60),
-    },
-    {
-        id: 7,
-        aktor: 'dr. Budi Santoso',
-        peran: 'dokter_umum',
-        aksi: 'mengubah',
-        entitas: 'jadwal',
-        entitasId: '5',
-        keterangan: 'Mengubah jam praktik dokter umum menjadi 08.00–14.00.',
-        waktu: menitLalu(4 * 24 * 60),
-    },
-    {
-        id: 6,
-        aktor: 'Reiki Admin',
-        peran: 'admin',
-        aksi: 'mengubah',
-        entitas: 'dokter',
-        entitasId: '3',
-        keterangan: 'Memperbarui faskes dr. Hendra Wijaya menjadi RS Rujukan Daratan.',
-        waktu: menitLalu(6 * 24 * 60),
-    },
-    {
-        id: 5,
-        aktor: 'Reiki Admin',
-        peran: 'admin',
-        aksi: 'membuat',
-        entitas: 'pengguna',
-        entitasId: '6',
-        keterangan: 'Membuat akun dokter spesialis untuk dr. Ayu Lestari.',
-        waktu: menitLalu(9 * 24 * 60),
-    },
-    {
-        id: 4,
-        aktor: 'Perawat Sari',
-        peran: 'perawat',
-        aksi: 'menyelesaikan',
-        entitas: 'skrining',
-        entitasId: '4',
-        keterangan: 'Melengkapi skrining pasien dan menandai siap direview dokter umum.',
-        waktu: menitLalu(14 * 24 * 60),
-    },
-    {
-        id: 3,
-        aktor: 'Reiki Admin',
-        peran: 'admin',
-        aksi: 'membuat',
-        entitas: 'icd10',
-        entitasId: 'O80',
-        keterangan: 'Menambahkan diagnosis persalinan tunggal spontan.',
-        waktu: menitLalu(21 * 24 * 60),
-    },
-    {
-        id: 2,
-        aktor: 'Reiki Admin',
-        peran: 'admin',
-        aksi: 'login',
-        entitas: 'sesi',
-        entitasId: '',
-        keterangan: 'Masuk ke sistem dari perangkat puskesmas.',
-        waktu: menitLalu(40 * 24 * 60),
-    },
-    {
-        id: 1,
-        aktor: 'Perawat Sari',
-        peran: 'perawat',
-        aksi: 'login',
-        entitas: 'sesi',
-        entitasId: '',
-        keterangan: 'Masuk ke sistem untuk memulai antrean skrining.',
-        waktu: menitLalu(55 * 24 * 60),
-    },
 ];
 
 const formatAngka = new Intl.NumberFormat('id-ID');
@@ -322,7 +146,7 @@ function cocokRentang(iso: string, periode: Exclude<Periode, ''>): boolean {
     return selisih <= batasHari * 24 * 60 * 60 * 1000;
 }
 
-export default function Log() {
+export default function Log({ log }: { log: LogItem[] }) {
     const [q, setQ] = useState('');
     const [aksi, setAksi] = useState<AksiLog | ''>('');
     const [entitas, setEntitas] = useState<EntitasLog | ''>('');
@@ -332,7 +156,7 @@ export default function Log() {
     const daftarTampil = useMemo(() => {
         const keyword = q.trim().toLowerCase();
 
-        return logAwal
+        return log
             .filter((item) => {
                 const cocokCari =
                     keyword === '' ||
@@ -344,14 +168,14 @@ export default function Log() {
                 return cocokCari && cocokAksi && cocokEntitas && cocokPeriode;
             })
             .sort((a, b) => new Date(b.waktu).getTime() - new Date(a.waktu).getTime());
-    }, [q, aksi, entitas, periode]);
+    }, [log, q, aksi, entitas, periode]);
 
     const hariIniKey = new Date().toDateString();
     const ringkasan = {
-        total: logAwal.length,
-        hariIni: logAwal.filter((item) => new Date(item.waktu).toDateString() === hariIniKey).length,
-        master: logAwal.filter((item) => item.entitas === 'pengguna' || item.entitas === 'dokter' || item.entitas === 'icd10').length,
-        olehAdmin: logAwal.filter((item) => item.peran === 'admin').length,
+        total: log.length,
+        hariIni: log.filter((item) => new Date(item.waktu).toDateString() === hariIniKey).length,
+        master: log.filter((item) => item.entitas === 'pengguna' || item.entitas === 'dokter' || item.entitas === 'icd10').length,
+        olehAdmin: log.filter((item) => item.peran === 'admin').length,
     };
 
     const ringkasanCards: { key: keyof typeof ringkasan; label: string; caption: string; icon: LucideIcon; tone: string }[] = [

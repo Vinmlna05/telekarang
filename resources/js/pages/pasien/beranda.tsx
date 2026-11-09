@@ -1,7 +1,21 @@
 import { Head, Link } from '@inertiajs/react';
-import { CalendarDays, CheckCircle2, ChevronRight, Clock, History, LayoutGrid, MapPin, Plus, ShieldCheck, Stethoscope, Wifi } from 'lucide-react';
+import {
+    Bell,
+    CalendarDays,
+    CheckCircle2,
+    ChevronRight,
+    Clock,
+    History,
+    LayoutGrid,
+    MapPin,
+    Plus,
+    ShieldCheck,
+    Stethoscope,
+    Wifi,
+} from 'lucide-react';
 import { useState } from 'react';
 
+import { useNotifikasi } from '@/hooks/use-notifikasi';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { cn } from '@/lib/utils';
 
@@ -84,6 +98,7 @@ function SectionHeading({ title, href, action }: { title: string; href?: string;
 export default function BerandaPasien({ konsultasiAktif, ringkasan, dokter, riwayat }: BerandaPasienProps) {
     const [filter, setFilter] = useState('Semua');
     const [showMore, setShowMore] = useState(false);
+    const { belumDibaca } = useNotifikasi('pasien');
 
     const dokterTersaring = filter === 'Semua' ? dokter : dokter.filter((item) => item.spesialisasi === filter);
     const status = konsultasiAktif ? statusMeta[konsultasiAktif.status] : null;
@@ -98,6 +113,24 @@ export default function BerandaPasien({ konsultasiAktif, ringkasan, dokter, riwa
 
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.9fr)]">
                 <div className="grid min-w-0 content-start gap-6">
+                    {belumDibaca > 0 && (
+                        <Link
+                            href="/pasien/notifikasi"
+                            className="bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12] border-tk-green-400/35 hover:bg-tk-green-500/20 flex items-center gap-3 rounded-[20px] border p-4 transition-colors"
+                        >
+                            <span className="bg-tk-green-500/15 text-tk-green-500 dark:text-tk-accent grid size-10 shrink-0 place-items-center rounded-full">
+                                <Bell className="size-5" aria-hidden="true" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-bold">{belumDibaca} notifikasi baru</p>
+                                <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--tk-muted)]">
+                                    Lihat hasil konsultasi dan keputusan rujukan dari dokter spesialis.
+                                </p>
+                            </div>
+                            <ChevronRight className="size-4 shrink-0 text-[var(--tk-muted)]" aria-hidden="true" />
+                        </Link>
+                    )}
+
                     <section
                         aria-labelledby="permintaan-aktif"
                         className="relative overflow-hidden rounded-[24px] border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] p-5 shadow-[0_18px_45px_rgba(4,16,14,0.10)] backdrop-blur-[16px] lg:p-6"

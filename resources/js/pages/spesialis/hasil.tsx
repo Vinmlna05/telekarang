@@ -13,6 +13,8 @@ import {
     MapPin,
     MessageSquare,
     Phone,
+    Pill,
+    Plus,
     RotateCcw,
     Ruler,
     Save,
@@ -21,6 +23,7 @@ import {
     ShieldCheck,
     Stethoscope,
     Thermometer,
+    Trash2,
     UserRound,
     Video,
     Wind,
@@ -30,9 +33,14 @@ import {
 import { useEffect, useState, type FormEvent } from 'react';
 
 import InputError from '@/components/input-error';
+import ResepObatCard from '@/components/resep-obat-card';
 import { Input } from '@/components/ui/input';
+import { bacaHasilSpesialis, simpanHasilSpesialis, type HasilSpesialisTersimpan } from '@/data/hasil-spesialis';
 import { daftarIcd10, type Icd10Item } from '@/data/icd10';
-import { cariKonsultasiRuang, type ModeRuang } from '@/data/konsultasi-spesialis';
+import { simpanKonsultasiPasienLokal, type KonsultasiPasien } from '@/data/konsultasi-pasien';
+import { cariKonsultasiRuang, type KonsultasiRuang, type ModeRuang } from '@/data/konsultasi-spesialis';
+import { tambahNotifikasi } from '@/data/notifikasi';
+import { itemResepBaru, ruteObat, type ItemResep, type Resep } from '@/data/resep';
 import SpesialisAppLayout from '@/layouts/spesialis/spesialis-app-layout';
 import { cn } from '@/lib/utils';
 
@@ -42,19 +50,9 @@ interface HasilKonsultasiProps {
 
 type Keputusan = '' | 'rujuk' | 'tidak_rujuk';
 
-type HasilErrors = Partial<Record<'icd' | 'saran' | 'keputusan' | 'alasan' | 'biaya', string>>;
+type HasilErrors = Partial<Record<'icd' | 'saran' | 'keputusan' | 'alasan' | 'biaya' | 'resep', string>>;
 
-interface HasilTersimpan {
-    konsultasiId: number;
-    kodeIcd: string;
-    namaIcd: string;
-    saran: string;
-    keputusanRujuk: boolean;
-    alasanRujuk: string | null;
-    biayaRujukan: number | null;
-    ringkasanPasien: string | null;
-    waktu: string;
-}
+type HasilTersimpan = HasilSpesialisTersimpan;
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
 const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77F_100%)]';
@@ -75,58 +73,59 @@ const formatRupiah = new Intl.NumberFormat('id-ID', {
     maximumFractionDigits: 0,
 });
 
-function kunciHasil(id: number): string {
-    return `telekarang:hasil-spesialis:${id}`;
-}
-
 function angkaDesimal(nilai: number): string {
     return nilai.toLocaleString('id-ID', { maximumFractionDigits: 1 });
 }
 
-function bacaHasil(id: number): HasilTersimpan | null {
-    try {
-        const mentah = window.localStorage.getItem(kunciHasil(id));
+const dokterSpesialis: Record<string, string> = {
+    Anak: 'dr. Ayu Lestari, Sp.A',
+    'Penyakit Dalam': 'dr. Bima Pratama, Sp.PD',
+    Kulit: 'dr. Rina Kartika, Sp.KK',
+};
 
-        if (!mentah) {
-            return null;
-        }
-
-        const parsed: unknown = JSON.parse(mentah);
-
-        if (!parsed || typeof parsed !== 'object') {
-            return null;
-        }
-
-        const obj = parsed as Record<string, unknown>;
-
-        if (typeof obj.kodeIcd !== 'string' || typeof obj.namaIcd !== 'string' || typeof obj.saran !== 'string') {
-            return null;
-        }
-
-        return {
-            konsultasiId: typeof obj.konsultasiId === 'number' ? obj.konsultasiId : id,
-            kodeIcd: obj.kodeIcd,
-            namaIcd: obj.namaIcd,
-            saran: obj.saran,
-            keputusanRujuk: obj.keputusanRujuk === true,
-            alasanRujuk: typeof obj.alasanRujuk === 'string' ? obj.alasanRujuk : null,
-            biayaRujukan: typeof obj.biayaRujukan === 'number' ? obj.biayaRujukan : null,
-            ringkasanPasien: typeof obj.ringkasanPasien === 'string' ? obj.ringkasanPasien : null,
-            waktu: typeof obj.waktu === 'string' ? obj.waktu : '',
-        };
-    } catch {
+function hasilResep(perluObat: boolean, konsultasiId: number, items: ItemResep[], catatan: string): Resep | null {
+    if (!perluObat || items.length === 0) {
         return null;
     }
+
+    return {
+        konsultasiId,
+        perluObat: true,
+        items,
+        catatan: catatan.trim(),
+    };
 }
 
-function simpanHasil(hasil: HasilTersimpan): boolean {
-    try {
-        window.localStorage.setItem(kunciHasil(hasil.konsultasiId), JSON.stringify(hasil));
+function konsultasiPasienDariHasil(data: KonsultasiRuang, hasil: HasilTersimpan): KonsultasiPasien {
+    const sekarang = new Date();
 
-        return true;
-    } catch {
-        return false;
-    }
+    return {
+        id: data.id,
+        nomor: data.nomor,
+        tanggal: sekarang.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+        tanggalSingkat: sekarang.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+        dokter: dokterSpesialis[data.spesialisasi] ?? `Dokter Spesialis ${data.spesialisasi}`,
+        spesialisasi: data.spesialisasi,
+        faskes: data.faskes,
+        jadwal: data.jadwal,
+        mode: data.mode,
+        status: 'SELESAI',
+        keluhan: data.keluhan,
+        skrining: data.skrining,
+        hasil: {
+            icd10Kode: hasil.kodeIcd,
+            icd10Nama: hasil.namaIcd,
+            saran: hasil.saran,
+            keputusanRujuk: hasil.keputusanRujuk,
+            alasanRujuk: hasil.alasanRujuk,
+            biayaRujukan: hasil.biayaRujukan,
+            tindakLanjut:
+                hasil.ringkasanPasien ?? 'Hasil konsultasi sudah tersedia. Hubungi perawat puskesmas untuk informasi obat dan tindak lanjut.',
+            resep: hasil.resep,
+            waktu: hasil.waktu,
+        },
+        pesan: data.pesan.map((pesan) => ({ ...pesan })),
+    };
 }
 
 export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsultasiProps) {
@@ -139,13 +138,16 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
     const [alasan, setAlasan] = useState('');
     const [biaya, setBiaya] = useState('');
     const [ringkasan, setRingkasan] = useState('');
+    const [perluObat, setPerluObat] = useState(false);
+    const [resepItems, setResepItems] = useState<ItemResep[]>([]);
+    const [catatanResep, setCatatanResep] = useState('');
     const [errors, setErrors] = useState<HasilErrors>({});
     const [tersimpan, setTersimpan] = useState<HasilTersimpan | null>(null);
     const [selesai, setSelesai] = useState(false);
     const [info, setInfo] = useState<string | null>(null);
 
     useEffect(() => {
-        const tersimpanAwal = bacaHasil(data.id);
+        const tersimpanAwal = bacaHasilSpesialis(data.id);
 
         setTersimpan(tersimpanAwal);
         setSelesai(false);
@@ -160,6 +162,9 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
             setAlasan('');
             setBiaya('');
             setRingkasan('');
+            setPerluObat(false);
+            setResepItems([]);
+            setCatatanResep('');
 
             return;
         }
@@ -170,6 +175,9 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
         setAlasan(tersimpanAwal.alasanRujuk ?? '');
         setBiaya(tersimpanAwal.biayaRujukan !== null ? String(tersimpanAwal.biayaRujukan) : '');
         setRingkasan(tersimpanAwal.ringkasanPasien ?? '');
+        setPerluObat(tersimpanAwal.resep?.perluObat ?? false);
+        setResepItems(tersimpanAwal.resep?.items ?? []);
+        setCatatanResep(tersimpanAwal.resep?.catatan ?? '');
         setInfo('Hasil konsultasi sudah pernah disimpan. Perubahan akan memperbarui rekaman sebelumnya.');
     }, [data.id]);
 
@@ -197,7 +205,22 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
 
     function pilihKeputusan(nilai: Exclude<Keputusan, ''>) {
         setKeputusan(nilai);
-        setErrors((previous) => ({ ...previous, keputusan: undefined, alasan: undefined, biaya: undefined }));
+        setErrors((previous) => ({ ...previous, keputusan: undefined, alasan: undefined, biaya: undefined, resep: undefined }));
+    }
+
+    function tambahItemResep() {
+        const idBaru = resepItems.reduce((terbesar, item) => Math.max(terbesar, item.id), 0) + 1;
+        setResepItems((sebelumnya) => [...sebelumnya, itemResepBaru(idBaru)]);
+        setErrors((previous) => ({ ...previous, resep: undefined }));
+    }
+
+    function ubahItemResep(id: number, perubahan: Partial<ItemResep>) {
+        setResepItems((sebelumnya) => sebelumnya.map((item) => (item.id === id ? { ...item, ...perubahan } : item)));
+        setErrors((previous) => ({ ...previous, resep: undefined }));
+    }
+
+    function hapusItemResep(id: number) {
+        setResepItems((sebelumnya) => sebelumnya.filter((item) => item.id !== id));
     }
 
     function kirimHasil(event: FormEvent<HTMLFormElement>) {
@@ -208,6 +231,7 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
         const saranBersih = saran.trim();
         const alasanBersih = alasan.trim();
         let biayaFinal: number | null = null;
+        let resepFinal: Resep | null = null;
 
         if (!item) {
             kesalahan.icd = 'Pilih satu diagnosis ICD-10 dari daftar.';
@@ -233,6 +257,29 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
             }
         }
 
+        if (keputusan === 'tidak_rujuk' && perluObat) {
+            const itemBersih = resepItems
+                .map((resep) => ({
+                    ...resep,
+                    namaObat: resep.namaObat.trim(),
+                    dosis: resep.dosis.trim(),
+                    rute: resep.rute.trim(),
+                    frekuensi: resep.frekuensi.trim(),
+                    durasi: resep.durasi.trim(),
+                    jumlah: resep.jumlah.trim(),
+                    instruksi: resep.instruksi?.trim() ?? '',
+                }))
+                .filter((resep) => resep.namaObat.length > 0);
+
+            if (itemBersih.length === 0) {
+                kesalahan.resep = 'Tambahkan minimal satu obat atau matikan opsi resep obat.';
+            } else if (itemBersih.some((resep) => !resep.dosis || !resep.frekuensi || !resep.durasi)) {
+                kesalahan.resep = 'Lengkapi dosis, frekuensi, dan durasi untuk setiap obat.';
+            } else {
+                resepFinal = hasilResep(true, data.id, itemBersih, catatanResep);
+            }
+        }
+
         setErrors(kesalahan);
 
         if (Object.keys(kesalahan).length > 0) {
@@ -244,6 +291,7 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
             return;
         }
 
+        const waktuSekarang = new Date();
         const rekaman: HasilTersimpan = {
             konsultasiId: data.id,
             kodeIcd: item.kode,
@@ -253,16 +301,59 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
             alasanRujuk: keputusan === 'rujuk' ? alasanBersih : null,
             biayaRujukan: biayaFinal,
             ringkasanPasien: ringkasan.trim().length > 0 ? ringkasan.trim() : null,
-            waktu: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
+            waktu: waktuSekarang.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
+            resep: resepFinal,
         };
 
-        const berhasil = simpanHasil(rekaman);
+        const berhasil = simpanHasilSpesialis(rekaman);
+
+        if (berhasil) {
+            const tipe = rekaman.keputusanRujuk ? 'RUJUKAN' : 'TIDAK_DIRUJUK';
+            const adaResep = Boolean(resepFinal && resepFinal.items.length > 0);
+            const isiUntukTenaga = rekaman.keputusanRujuk
+                ? `${data.pasien.nama} perlu dirujuk. ${rekaman.alasanRujuk ?? ''}`
+                : `${data.pasien.nama} tidak perlu dirujuk.${adaResep ? ' Resep obat sudah dicatat dan perlu disiapkan.' : ''}`;
+
+            tambahNotifikasi('perawat', {
+                id: `hasil-${data.id}`,
+                tipe,
+                judul: rekaman.keputusanRujuk ? 'Pasien perlu dirujuk' : 'Hasil konsultasi: tidak dirujuk',
+                isi: isiUntukTenaga,
+                url: `/perawat/tindak-lanjut/${data.id}`,
+                dibaca: false,
+                waktu: waktuSekarang.toISOString(),
+            });
+
+            tambahNotifikasi('dokter_umum', {
+                id: `hasil-${data.id}`,
+                tipe: 'HASIL_SPESIALIS',
+                judul: 'Hasil konsultasi spesialis tersedia',
+                isi: `${data.pasien.nama}: ${item.nama}. ${rekaman.keputusanRujuk ? 'Disarankan rujuk.' : 'Tidak dirujuk.'}`,
+                url: `/dokter/hasil/${data.id}`,
+                dibaca: false,
+                waktu: waktuSekarang.toISOString(),
+            });
+
+            tambahNotifikasi('pasien', {
+                id: `hasil-${data.id}`,
+                tipe,
+                judul: rekaman.keputusanRujuk ? 'Anda dirujuk ke rumah sakit' : 'Anda tidak perlu dirujuk',
+                isi: rekaman.keputusanRujuk
+                    ? `Dokter spesialis menyarankan rujukan ke ${data.faskes}. Perawat akan membantu proses keberangkatan.`
+                    : `Konsultasi Anda cukup ditindaklanjuti di puskesmas.${adaResep ? ' Ada resep obat yang bisa diambil di puskesmas.' : ''}`,
+                url: `/pasien/konsultasi/${data.id}`,
+                dibaca: false,
+                waktu: waktuSekarang.toISOString(),
+            });
+
+            simpanKonsultasiPasienLokal(konsultasiPasienDariHasil(data, rekaman));
+        }
 
         setTersimpan(rekaman);
         setSelesai(true);
         setInfo(
             berhasil
-                ? 'Hasil konsultasi tersimpan dan siap diteruskan ke perawat serta dokter umum.'
+                ? 'Hasil konsultasi tersimpan, notifikasi terkirim ke perawat dan pasien, serta siap diteruskan ke dokter umum.'
                 : 'Hasil tampil pada sesi ini, tetapi penyimpanan di perangkat gagal. Salin hasil sebelum menutup halaman.',
         );
     }
@@ -289,6 +380,16 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
             ? [
                   { label: 'Alasan rujukan terisi', selesai: alasan.trim().length >= 15 },
                   { label: 'Estimasi biaya rujukan terisi', selesai: biayaAngka !== null && biayaAngka > 0 },
+              ]
+            : []),
+        ...(keputusan === 'tidak_rujuk' && perluObat
+            ? [
+                  {
+                      label: 'Resep obat lengkap',
+                      selesai:
+                          resepItems.length > 0 &&
+                          resepItems.every((item) => item.namaObat.trim() && item.dosis.trim() && item.frekuensi.trim() && item.durasi.trim()),
+                  },
               ]
             : []),
     ];
@@ -405,6 +506,8 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
                                         <p className="mt-1.5 text-xs leading-relaxed">{tersimpan.ringkasanPasien}</p>
                                     </div>
                                 )}
+
+                                {!tersimpan.keputusanRujuk && <ResepObatCard resep={tersimpan.resep} selaluTampil />}
 
                                 <div
                                     className={cn(
@@ -758,6 +861,183 @@ export default function HasilKonsultasiSpesialis({ konsultasiId }: HasilKonsulta
                                     </div>
                                 )}
                             </section>
+
+                            {keputusan === 'tidak_rujuk' && (
+                                <section aria-labelledby="resep-obat" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
+                                    <div className="flex items-start gap-3">
+                                        <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-10 shrink-0 place-items-center rounded-full">
+                                            <Pill className="size-5" aria-hidden="true" />
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <h2 id="resep-obat" className="text-[15px] font-bold">
+                                                Resep obat
+                                            </h2>
+                                            <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                                Khusus pasien yang tidak dirujuk. Resep akan diteruskan ke perawat untuk disiapkan di puskesmas.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={perluObat}
+                                        onClick={() => {
+                                            const nilaiBaru = !perluObat;
+                                            setPerluObat(nilaiBaru);
+                                            setErrors((previous) => ({ ...previous, resep: undefined }));
+
+                                            if (nilaiBaru && resepItems.length === 0) {
+                                                setResepItems([itemResepBaru(1)]);
+                                            }
+                                        }}
+                                        className={cn(
+                                            'mt-4 flex w-full items-center justify-between gap-3 rounded-2xl border p-3.5 text-left transition-colors',
+                                            perluObat
+                                                ? 'border-tk-green-400 bg-tk-green-500/10'
+                                                : 'border-[var(--tk-glass-border)] hover:bg-[var(--tk-page-alt)]',
+                                        )}
+                                    >
+                                        <span className="min-w-0">
+                                            <span className="block text-xs font-bold">Pasien memerlukan obat</span>
+                                            <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                                Aktifkan untuk menulis daftar obat yang harus diberikan perawat.
+                                            </span>
+                                        </span>
+                                        <span
+                                            className={cn(
+                                                'relative h-6 w-11 shrink-0 rounded-full transition-colors',
+                                                perluObat ? 'bg-tk-green-500' : 'bg-[var(--tk-glass-border)]',
+                                            )}
+                                            aria-hidden="true"
+                                        >
+                                            <span
+                                                className={cn(
+                                                    'absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-all',
+                                                    perluObat ? 'left-[22px]' : 'left-0.5',
+                                                )}
+                                            />
+                                        </span>
+                                    </button>
+
+                                    {perluObat && (
+                                        <div className="mt-4 grid gap-3">
+                                            {resepItems.map((item, index) => (
+                                                <div
+                                                    key={item.id}
+                                                    className="rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-3.5"
+                                                >
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className="text-[11px] font-bold">Obat {index + 1}</p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => hapusItemResep(item.id)}
+                                                            aria-label={`Hapus obat ${index + 1}`}
+                                                            className="hover:bg-tk-danger/10 hover:text-tk-danger grid size-7 place-items-center rounded-full text-[var(--tk-muted)] transition-colors"
+                                                        >
+                                                            <Trash2 className="size-3.5" aria-hidden="true" />
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+                                                        <label className="text-[10px] font-semibold">
+                                                            Nama obat <span className="text-tk-danger">*</span>
+                                                            <Input
+                                                                value={item.namaObat}
+                                                                onChange={(event) => ubahItemResep(item.id, { namaObat: event.target.value })}
+                                                                placeholder="Contoh: Parasetamol"
+                                                                className="mt-1 h-10 rounded-xl text-xs"
+                                                            />
+                                                        </label>
+                                                        <label className="text-[10px] font-semibold">
+                                                            Dosis <span className="text-tk-danger">*</span>
+                                                            <Input
+                                                                value={item.dosis}
+                                                                onChange={(event) => ubahItemResep(item.id, { dosis: event.target.value })}
+                                                                placeholder="Contoh: 500 mg"
+                                                                className="mt-1 h-10 rounded-xl text-xs"
+                                                            />
+                                                        </label>
+                                                        <label className="text-[10px] font-semibold">
+                                                            Rute
+                                                            <select
+                                                                value={item.rute}
+                                                                onChange={(event) => ubahItemResep(item.id, { rute: event.target.value })}
+                                                                className="focus:ring-tk-accent mt-1 h-10 w-full rounded-xl border border-[var(--tk-glass-border)] bg-[var(--tk-page)] px-3 text-xs text-[var(--tk-text)] focus:ring-2 focus:outline-hidden"
+                                                            >
+                                                                {ruteObat.map((rute) => (
+                                                                    <option key={rute} value={rute}>
+                                                                        {rute}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </label>
+                                                        <label className="text-[10px] font-semibold">
+                                                            Frekuensi <span className="text-tk-danger">*</span>
+                                                            <Input
+                                                                value={item.frekuensi}
+                                                                onChange={(event) => ubahItemResep(item.id, { frekuensi: event.target.value })}
+                                                                placeholder="Contoh: 3× sehari"
+                                                                className="mt-1 h-10 rounded-xl text-xs"
+                                                            />
+                                                        </label>
+                                                        <label className="text-[10px] font-semibold">
+                                                            Durasi <span className="text-tk-danger">*</span>
+                                                            <Input
+                                                                value={item.durasi}
+                                                                onChange={(event) => ubahItemResep(item.id, { durasi: event.target.value })}
+                                                                placeholder="Contoh: 5 hari"
+                                                                className="mt-1 h-10 rounded-xl text-xs"
+                                                            />
+                                                        </label>
+                                                        <label className="text-[10px] font-semibold">
+                                                            Jumlah
+                                                            <Input
+                                                                value={item.jumlah}
+                                                                onChange={(event) => ubahItemResep(item.id, { jumlah: event.target.value })}
+                                                                placeholder="Contoh: 15 tablet"
+                                                                className="mt-1 h-10 rounded-xl text-xs"
+                                                            />
+                                                        </label>
+                                                    </div>
+
+                                                    <label className="mt-2.5 block text-[10px] font-semibold">
+                                                        Instruksi khusus
+                                                        <Input
+                                                            value={item.instruksi ?? ''}
+                                                            onChange={(event) => ubahItemResep(item.id, { instruksi: event.target.value })}
+                                                            placeholder="Contoh: Minum setelah makan"
+                                                            className="mt-1 h-10 rounded-xl text-xs"
+                                                        />
+                                                    </label>
+                                                </div>
+                                            ))}
+
+                                            <button
+                                                type="button"
+                                                onClick={tambahItemResep}
+                                                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-dashed border-[var(--tk-glass-border)] px-4 text-[11px] font-semibold transition-colors hover:bg-[var(--tk-page-alt)]"
+                                            >
+                                                <Plus className="size-3.5" aria-hidden="true" />
+                                                Tambah obat lain
+                                            </button>
+
+                                            <label className="text-[10px] font-semibold">
+                                                Catatan resep
+                                                <textarea
+                                                    rows={2}
+                                                    value={catatanResep}
+                                                    onChange={(event) => setCatatanResep(event.target.value)}
+                                                    placeholder="Contoh: Berikan setelah makan. Hentikan bila muncul ruam."
+                                                    className={textareaClass}
+                                                />
+                                            </label>
+                                        </div>
+                                    )}
+
+                                    <InputError message={errors.resep} className="mt-2" />
+                                </section>
+                            )}
 
                             <div className={cn('flex flex-col gap-3 rounded-[24px] p-5 sm:flex-row sm:items-center sm:justify-between', glass)}>
                                 <p className="flex items-start gap-2 text-[10px] leading-relaxed text-[var(--tk-muted)]">

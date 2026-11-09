@@ -104,7 +104,7 @@ Alur A: Permintaan dari akun pasien
        └─ Buruk → Mode Koneksi Rendah (teks + foto terkompres, asynchronous)
 [9]  Konsultasi berlangsung                             status: BERLANGSUNG
 [10] Spesialis isi hasil: diagnosis ICD-10, saran, keputusan rujuk   status: SELESAI
-[11] Perawat/dokter umum menerima hasil
+[11] Perawat menerima hasil
        ├─ Tidak rujuk → tindakan di puskesmas (dihitung "rujukan terhindarkan")
        └─ Rujuk → catat alasan dan biaya rujukan, bantu proses rujukan
 [12] Data masuk ke dasbor

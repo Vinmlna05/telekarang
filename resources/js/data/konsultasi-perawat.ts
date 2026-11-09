@@ -1,4 +1,6 @@
+import { bacaHasilSpesialis } from './hasil-spesialis';
 import type { ModeKonsultasi, PengirimPesan, StatusKonsultasi } from './konsultasi-pasien';
+import type { Resep } from './resep';
 
 export interface SkriningPerawat {
     perawat: string;
@@ -29,6 +31,7 @@ export interface HasilPerawat {
     alasanRujuk: string | null;
     biayaRujukan: number | null;
     tindakLanjut: string | null;
+    resep: Resep | null;
     waktu: string;
 }
 
@@ -235,6 +238,23 @@ export const konsultasiPerawat: KonsultasiPerawat[] = [
             alasanRujuk: null,
             biayaRujukan: null,
             tindakLanjut: null,
+            resep: {
+                konsultasiId: 1,
+                perluObat: true,
+                catatan: 'Diberikan di puskesmas. Pastikan dosis sesuai berat badan anak.',
+                items: [
+                    {
+                        id: 1,
+                        namaObat: 'Parasetamol sirup',
+                        dosis: '5 ml',
+                        rute: 'Oral',
+                        frekuensi: '3× sehari bila demam',
+                        durasi: '3 hari',
+                        jumlah: '1 botol',
+                        instruksi: 'Berikan setelah makan. Hentikan bila suhu sudah normal.',
+                    },
+                ],
+            },
             waktu: '28 Oktober 2026 · 10.05 WITA',
         },
         pesan: [
@@ -309,6 +329,7 @@ export const konsultasiPerawat: KonsultasiPerawat[] = [
             alasanRujuk: 'Sesak memberat dengan SpO₂ 90% dan hipertensi, memerlukan fasilitas rawat inap dan evaluasi kardiologi.',
             biayaRujukan: 1250000,
             tindakLanjut: null,
+            resep: null,
             waktu: '30 Oktober 2026 · 09.42 WITA',
         },
         pesan: [
@@ -360,4 +381,29 @@ export const konsultasiPerawat: KonsultasiPerawat[] = [
 
 export function cariKonsultasiPerawat(id: number): KonsultasiPerawat {
     return konsultasiPerawat.find((item) => item.id === id) ?? konsultasiPerawat[0];
+}
+
+export function cariKonsultasiPerawatDenganHasil(id: number): KonsultasiPerawat {
+    const data = cariKonsultasiPerawat(id);
+    const hasilLokal = bacaHasilSpesialis(data.id);
+
+    if (!hasilLokal) {
+        return data;
+    }
+
+    return {
+        ...data,
+        status: 'SELESAI',
+        hasil: {
+            icd10Kode: hasilLokal.kodeIcd,
+            icd10Nama: hasilLokal.namaIcd,
+            saran: hasilLokal.saran,
+            keputusanRujuk: hasilLokal.keputusanRujuk,
+            alasanRujuk: hasilLokal.alasanRujuk,
+            biayaRujukan: hasilLokal.biayaRujukan,
+            tindakLanjut: data.hasil?.tindakLanjut ?? null,
+            resep: hasilLokal.resep,
+            waktu: hasilLokal.waktu,
+        },
+    };
 }

@@ -1,11 +1,13 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
+    AlertTriangle,
     Ban,
     BookOpen,
     CheckCircle2,
     ClipboardList,
     Database,
     Layers,
+    LoaderCircle,
     Pencil,
     Plus,
     Search,
@@ -31,6 +33,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AdminAppLayout from '@/layouts/admin/admin-app-layout';
 import { cn } from '@/lib/utils';
+import { type SharedData } from '@/types';
 
 interface Icd10Item {
     kode: string;
@@ -38,12 +41,14 @@ interface Icd10Item {
     pemakaian: number;
 }
 
-interface Icd10Form {
+type Icd10Form = {
     kode: string;
     nama: string;
-}
+};
 
-type Icd10Errors = Partial<Record<keyof Icd10Form, string>>;
+interface Icd10Props {
+    daftar: Icd10Item[];
+}
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
 
@@ -69,31 +74,6 @@ const KELOMPOK: Record<string, string> = {
     Z: 'Faktor kesehatan',
 };
 
-const icdAwal: Icd10Item[] = [
-    { kode: 'A09', nama: 'Diare dan gastroenteritis', pemakaian: 11 },
-    { kode: 'B34.2', nama: 'Infeksi virus corona, tidak dijelaskan', pemakaian: 3 },
-    { kode: 'E11.9', nama: 'Diabetes melitus tipe 2 tanpa komplikasi', pemakaian: 6 },
-    { kode: 'H10.9', nama: 'Konjungtivitis, tidak dijelaskan', pemakaian: 1 },
-    { kode: 'H66.9', nama: 'Otitis media, tidak dijelaskan', pemakaian: 2 },
-    { kode: 'I10', nama: 'Hipertensi esensial (primer)', pemakaian: 18 },
-    { kode: 'I25.9', nama: 'Penyakit jantung iskemik kronik', pemakaian: 4 },
-    { kode: 'J00', nama: 'Nasofaringitis akut (common cold)', pemakaian: 5 },
-    { kode: 'J06.9', nama: 'Infeksi saluran napas atas akut', pemakaian: 15 },
-    { kode: 'J18.9', nama: 'Pneumonia, tidak dijelaskan', pemakaian: 3 },
-    { kode: 'J45.9', nama: 'Asma, tidak dijelaskan', pemakaian: 2 },
-    { kode: 'K02.9', nama: 'Karies gigi, tidak dijelaskan', pemakaian: 1 },
-    { kode: 'K29.7', nama: 'Gastritis, tidak dijelaskan', pemakaian: 7 },
-    { kode: 'L30.9', nama: 'Dermatitis, tidak dijelaskan', pemakaian: 9 },
-    { kode: 'M54.5', nama: 'Nyeri punggung bawah', pemakaian: 4 },
-    { kode: 'N39.0', nama: 'Infeksi saluran kemih, lokasi tidak dijelaskan', pemakaian: 6 },
-    { kode: 'O80', nama: 'Persalinan tunggal spontan', pemakaian: 0 },
-    { kode: 'R05', nama: 'Batuk', pemakaian: 2 },
-    { kode: 'R50.9', nama: 'Demam, tidak dijelaskan', pemakaian: 7 },
-    { kode: 'R51', nama: 'Sakit kepala', pemakaian: 3 },
-    { kode: 'S93.4', nama: 'Terkilir pergelangan kaki', pemakaian: 0 },
-    { kode: 'Z00.0', nama: 'Pemeriksaan kesehatan umum', pemakaian: 0 },
-];
-
 const initialForm: Icd10Form = { kode: '', nama: '' };
 const formatAngka = new Intl.NumberFormat('id-ID');
 
@@ -103,16 +83,15 @@ function kelompokKode(kode: string): string {
     return KELOMPOK[huruf] ?? 'Lainnya';
 }
 
-export default function Icd10() {
-    const [daftar, setDaftar] = useState<Icd10Item[]>(icdAwal);
+export default function Icd10({ daftar }: Icd10Props) {
+    const { flash } = usePage<SharedData>().props;
     const [q, setQ] = useState('');
     const [kelompok, setKelompok] = useState('');
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingKode, setEditingKode] = useState<string | null>(null);
-    const [form, setForm] = useState<Icd10Form>({ ...initialForm });
-    const [errors, setErrors] = useState<Icd10Errors>({});
-    const [flash, setFlash] = useState<string | null>(null);
     const [hapusTarget, setHapusTarget] = useState<Icd10Item | null>(null);
+
+    const form = useForm<Icd10Form>({ ...initialForm });
 
     const kelompokTersedia = useMemo(
         () => Array.from(new Set(daftar.map((item) => kelompokKode(item.kode)))).sort((a, b) => a.localeCompare(b, 'id')),
@@ -184,60 +163,35 @@ export default function Icd10() {
 
     const bukaTambah = () => {
         setEditingKode(null);
-        setForm({ ...initialForm });
-        setErrors({});
+        form.setData({ ...initialForm });
+        form.clearErrors();
         setDialogOpen(true);
     };
 
     const bukaEdit = (item: Icd10Item) => {
         setEditingKode(item.kode);
-        setForm({ kode: item.kode, nama: item.nama });
-        setErrors({});
+        form.setData({ kode: item.kode, nama: item.nama });
+        form.clearErrors();
         setDialogOpen(true);
-    };
-
-    const ubahField = (key: keyof Icd10Form, value: string) => {
-        setForm((current) => ({ ...current, [key]: value }));
-        setErrors((current) => ({ ...current, [key]: undefined }));
     };
 
     const simpan: FormEventHandler = (event) => {
         event.preventDefault();
 
-        const kode = form.kode.trim().toUpperCase();
-        const nama = form.nama.trim();
-        const next: Icd10Errors = {};
-
-        if (kode === '') {
-            next.kode = 'Kode ICD-10 wajib diisi.';
-        } else if (!/^[A-Z][0-9]{2}(\.[0-9A-Z]{1,4})?$/.test(kode)) {
-            next.kode = 'Format kode tidak valid. Contoh: I10 atau J06.9.';
-        } else if (daftar.some((item) => item.kode === kode && item.kode !== editingKode)) {
-            next.kode = 'Kode sudah ada di daftar.';
-        }
-
-        if (nama === '') {
-            next.nama = 'Nama diagnosis wajib diisi.';
-        } else if (nama.length < 3) {
-            next.nama = 'Nama diagnosis minimal 3 karakter.';
-        }
-
-        if (Object.keys(next).length > 0) {
-            setErrors(next);
-
-            return;
-        }
+        const options = {
+            preserveScroll: true,
+            onSuccess: () => {
+                setDialogOpen(false);
+                setEditingKode(null);
+                form.reset();
+            },
+        };
 
         if (editingKode !== null) {
-            setDaftar((current) => current.map((item) => (item.kode === editingKode ? { ...item, kode, nama } : item)));
-            setFlash(`Kode ${kode} berhasil diperbarui.`);
+            form.patch(route('admin.icd10.update', editingKode), options);
         } else {
-            setDaftar((current) => [...current, { kode, nama, pemakaian: 0 }]);
-            setFlash(`Kode ${kode} berhasil ditambahkan.`);
+            form.post(route('admin.icd10.store'), options);
         }
-
-        setDialogOpen(false);
-        setErrors({});
     };
 
     const konfirmasiHapus = () => {
@@ -245,13 +199,14 @@ export default function Icd10() {
             return;
         }
 
-        setDaftar((current) => current.filter((item) => item.kode !== hapusTarget.kode));
-        setFlash(`Kode ${hapusTarget.kode} berhasil dihapus.`);
-        setHapusTarget(null);
+        router.delete(route('admin.icd10.destroy', hapusTarget.kode), {
+            preserveScroll: true,
+            onSuccess: () => setHapusTarget(null),
+        });
     };
 
     const judulDialog = editingKode === null ? 'Tambah kode ICD-10' : 'Edit kode ICD-10';
-    const kelompokPratinjau = form.kode.trim() === '' ? 'Belum ditentukan' : kelompokKode(form.kode);
+    const kelompokPratinjau = form.data.kode.trim() === '' ? 'Belum ditentukan' : kelompokKode(form.data.kode);
 
     return (
         <AdminAppLayout
@@ -278,14 +233,24 @@ export default function Icd10() {
                 </span>
             </nav>
 
-            {flash && (
+            {flash?.success && (
                 <div
                     role="status"
                     aria-live="polite"
                     className="border-tk-green-500/35 bg-tk-green-500/10 text-tk-green-500 dark:text-tk-accent mb-5 flex items-start gap-3 rounded-[18px] border px-4 py-3 text-sm font-medium"
                 >
                     <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                    <p>{flash}</p>
+                    <p>{flash.success}</p>
+                </div>
+            )}
+
+            {flash?.error && (
+                <div
+                    role="alert"
+                    className="border-tk-danger/35 bg-tk-danger/10 text-tk-danger mb-5 flex items-start gap-3 rounded-[18px] border px-4 py-3 text-sm font-medium"
+                >
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                    <p>{flash.error}</p>
                 </div>
             )}
 
@@ -327,7 +292,7 @@ export default function Icd10() {
                     setDialogOpen(next);
 
                     if (!next) {
-                        setErrors({});
+                        form.clearErrors();
                     }
                 }}
             >
@@ -430,15 +395,16 @@ export default function Icd10() {
                                 required
                                 autoFocus
                                 autoCapitalize="characters"
-                                value={form.kode}
-                                onChange={(event) => ubahField('kode', event.target.value.toUpperCase())}
+                                value={form.data.kode}
+                                onChange={(event) => form.setData('kode', event.target.value.toUpperCase())}
+                                disabled={form.processing}
                                 placeholder="Contoh: J06.9"
                                 className={cn(authInputClass, 'font-mono tracking-wide')}
                             />
                             <p className="text-[11px] text-[var(--tk-muted)]">
                                 Kelompok terdeteksi: <span className="font-semibold">{kelompokPratinjau}</span>
                             </p>
-                            <InputError message={errors.kode} className="text-tk-danger" />
+                            <InputError message={form.errors.kode} className="text-tk-danger" />
                         </div>
 
                         <div className="grid gap-2">
@@ -447,31 +413,35 @@ export default function Icd10() {
                                 id="icd-nama"
                                 type="text"
                                 required
-                                value={form.nama}
-                                onChange={(event) => ubahField('nama', event.target.value)}
+                                value={form.data.nama}
+                                onChange={(event) => form.setData('nama', event.target.value)}
+                                disabled={form.processing}
                                 placeholder="Contoh: Infeksi saluran napas atas akut"
                                 className={authInputClass}
                             />
-                            <InputError message={errors.nama} className="text-tk-danger" />
+                            <InputError message={form.errors.nama} className="text-tk-danger" />
                         </div>
 
                         <DialogFooter className="mt-1 gap-2">
                             <p className="mr-auto max-w-[26ch] text-[10px] leading-snug text-[var(--tk-muted)]">
-                                Pratinjau frontend: perubahan hanya tersimpan selama halaman ini dibuka.
+                                Perubahan langsung tersimpan ke database.
                             </p>
                             <DialogClose asChild>
                                 <button
                                     type="button"
-                                    className="min-h-11 rounded-full border border-[var(--tk-glass-border)] px-5 text-sm font-semibold"
+                                    disabled={form.processing}
+                                    className="min-h-11 rounded-full border border-[var(--tk-glass-border)] px-5 text-sm font-semibold disabled:opacity-50"
                                 >
                                     Batal
                                 </button>
                             </DialogClose>
                             <button
                                 type="submit"
-                                className="bg-tk-teal-700 dark:bg-tk-accent dark:text-tk-deep inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold text-white"
+                                disabled={form.processing}
+                                className="bg-tk-teal-700 dark:bg-tk-accent dark:text-tk-deep inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold text-white disabled:opacity-60"
                             >
-                                {editingKode === null ? 'Tambah kode' : 'Simpan perubahan'}
+                                {form.processing && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
+                                {form.processing ? 'Menyimpan...' : editingKode === null ? 'Tambah kode' : 'Simpan perubahan'}
                             </button>
                         </DialogFooter>
                     </form>

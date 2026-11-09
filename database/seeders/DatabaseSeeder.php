@@ -44,5 +44,12 @@ class DatabaseSeeder extends Seeder
             'password' => '12345678',
             'role' => 'admin',
         ]);
+
+        $this->call([
+            MasterDataSeeder::class,
+            PasienSeeder::class,
+            KonsultasiSeeder::class,
+            AuditLogSeeder::class,
+        ]);
     }
 }

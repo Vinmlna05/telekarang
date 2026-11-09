@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 import {
     AlertTriangle,
     ArrowUpRight,
+    Bell,
     CalendarDays,
     CheckCircle2,
     ChevronRight,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
+import { useNotifikasi } from '@/hooks/use-notifikasi';
 import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
 
@@ -87,6 +89,7 @@ function SectionHeading({ title, href, action }: { title: string; href?: string;
 export default function BerandaPerawat({ ringkasan, antrean, tindakLanjut }: BerandaPerawatProps) {
     const [showAngka, setShowAngka] = useState(true);
     const [showMore, setShowMore] = useState(false);
+    const { belumDibaca } = useNotifikasi('perawat');
 
     return (
         <PerawatAppLayout
@@ -95,6 +98,24 @@ export default function BerandaPerawat({ ringkasan, antrean, tindakLanjut }: Ber
             description="Pantau antrean skrining, tindak lanjut hasil, dan rujukan yang berhasil dihindarkan hari ini."
         >
             <Head title="Dasbor perawat" />
+
+            {belumDibaca > 0 && (
+                <Link
+                    href="/perawat/notifikasi"
+                    className="bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12] border-tk-green-400/35 hover:bg-tk-green-500/20 mb-4 flex items-center gap-3 rounded-[20px] border p-4 transition-colors"
+                >
+                    <span className="bg-tk-green-500/15 text-tk-green-500 dark:text-tk-accent grid size-10 shrink-0 place-items-center rounded-full">
+                        <Bell className="size-5" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold">{belumDibaca} notifikasi baru dari dokter spesialis</p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--tk-muted)]">
+                            Periksa hasil konsultasi, keputusan rujukan, dan resep obat yang perlu disiapkan.
+                        </p>
+                    </div>
+                    <ChevronRight className="size-4 shrink-0 text-[var(--tk-muted)]" aria-hidden="true" />
+                </Link>
+            )}
 
             <section aria-label="Ringkasan utama" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <article

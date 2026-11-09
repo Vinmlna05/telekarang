@@ -3,12 +3,26 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\HasilKonsultasi;
+use App\Models\Konsultasi;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class BerandaController extends Controller
 {
+    /**
+     * Estimasi biaya kapal sekali jalan (rupiah) untuk menghitung penghematan.
+     */
+    private const BIAYA_PERJALANAN = 850000;
+
+    /**
+     * Estimasi waktu tempuh kapal sekali jalan (jam).
+     */
+    private const JAM_PERJALANAN = 6;
+
     /**
      * Dasbor statistik admin: konsultasi, rujukan terhindarkan, dan penghematan.
      */
@@ -20,132 +34,162 @@ class BerandaController extends Controller
             $periode = 'bulan';
         }
 
-        $data = $this->dataPeriode();
+        [$mulai, $selesai] = $this->rentang($periode);
+
+        $konsultasi = Konsultasi::query()
+            ->whereBetween('tanggal', [$mulai, $selesai])
+            ->get(['tanggal', 'dikonfirmasi_pada', 'mode']);
+
+        $hasil = HasilKonsultasi::query()
+            ->whereHas('konsultasi', fn ($query) => $query->whereBetween('tanggal', [$mulai, $selesai]));
+
+        $totalKonsultasi = $konsultasi->count();
+        $rujukanTerhindarkan = (clone $hasil)->where('keputusan_rujuk', false)->count();
+        $rujukanDilakukan = (clone $hasil)->where('keputusan_rujuk', true)->count();
 
         return Inertia::render('admin/beranda', [
             'periode' => $periode,
-            ...$data[$periode],
+            'ringkasan' => [
+                'totalKonsultasi' => $totalKonsultasi,
+                'rujukanTerhindarkan' => $rujukanTerhindarkan,
+                'rujukanDilakukan' => $rujukanDilakukan,
+                'persentase' => $totalKonsultasi > 0
+                    ? (int) round($rujukanTerhindarkan / $totalKonsultasi * 100)
+                    : 0,
+                'biayaHemat' => $rujukanTerhindarkan * self::BIAYA_PERJALANAN,
+                'jamHemat' => $rujukanTerhindarkan * self::JAM_PERJALANAN,
+                'rataWaktuTunggu' => $this->rataWaktuTunggu($konsultasi),
+                'video' => $konsultasi->where('mode', 'video')->count(),
+                'teks' => $konsultasi->where('mode', 'teks')->count(),
+            ],
+            'tren' => $this->tren($periode, $konsultasi->pluck('tanggal')),
+            'diagnosis' => $this->diagnosis($mulai, $selesai),
+            'spesialisasi' => $this->spesialisasi($mulai, $selesai),
         ]);
     }
 
     /**
-     * Data demo fiktif per periode. Angka konsisten agar dapat didemokan.
+     * Rentang tanggal untuk periode yang dipilih.
      *
-     * @return array<string, array<string, mixed>>
+     * @return array{0: CarbonInterface, 1: CarbonInterface}
      */
-    private function dataPeriode(): array
+    private function rentang(string $periode): array
     {
-        return [
-            'minggu' => [
-                'ringkasan' => [
-                    'totalKonsultasi' => 24,
-                    'rujukanTerhindarkan' => 10,
-                    'rujukanDilakukan' => 3,
-                    'persentase' => 42,
-                    'biayaHemat' => 8500000,
-                    'jamHemat' => 60,
-                    'rataWaktuTunggu' => 2.1,
-                    'video' => 14,
-                    'teks' => 10,
-                ],
-                'tren' => [
-                    ['label' => 'Sen', 'konsultasi' => 4],
-                    ['label' => 'Sel', 'konsultasi' => 3],
-                    ['label' => 'Rab', 'konsultasi' => 5],
-                    ['label' => 'Kam', 'konsultasi' => 2],
-                    ['label' => 'Jum', 'konsultasi' => 4],
-                    ['label' => 'Sab', 'konsultasi' => 3],
-                    ['label' => 'Min', 'konsultasi' => 3],
-                ],
-                'diagnosis' => [
-                    ['kode' => 'I10', 'nama' => 'Hipertensi esensial', 'jumlah' => 5],
-                    ['kode' => 'J06.9', 'nama' => 'ISPA akut', 'jumlah' => 4],
-                    ['kode' => 'A09', 'nama' => 'Diare dan gastroenteritis', 'jumlah' => 3],
-                    ['kode' => 'L30.9', 'nama' => 'Dermatitis', 'jumlah' => 2],
-                    ['kode' => 'R50.9', 'nama' => 'Demam tidak spesifik', 'jumlah' => 2],
-                ],
-                'spesialisasi' => [
-                    ['nama' => 'Anak', 'jumlah' => 8],
-                    ['nama' => 'Penyakit Dalam', 'jumlah' => 7],
-                    ['nama' => 'Kulit', 'jumlah' => 4],
-                    ['nama' => 'Kandungan', 'jumlah' => 3],
-                    ['nama' => 'Lainnya', 'jumlah' => 2],
-                ],
-            ],
-            'bulan' => [
-                'ringkasan' => [
-                    'totalKonsultasi' => 95,
-                    'rujukanTerhindarkan' => 38,
-                    'rujukanDilakukan' => 12,
-                    'persentase' => 40,
-                    'biayaHemat' => 32300000,
-                    'jamHemat' => 228,
-                    'rataWaktuTunggu' => 2.4,
-                    'video' => 54,
-                    'teks' => 41,
-                ],
-                'tren' => [
-                    ['label' => 'Minggu 1', 'konsultasi' => 21],
-                    ['label' => 'Minggu 2', 'konsultasi' => 24],
-                    ['label' => 'Minggu 3', 'konsultasi' => 26],
-                    ['label' => 'Minggu 4', 'konsultasi' => 24],
-                ],
-                'diagnosis' => [
-                    ['kode' => 'I10', 'nama' => 'Hipertensi esensial', 'jumlah' => 18],
-                    ['kode' => 'J06.9', 'nama' => 'ISPA akut', 'jumlah' => 15],
-                    ['kode' => 'A09', 'nama' => 'Diare dan gastroenteritis', 'jumlah' => 11],
-                    ['kode' => 'L30.9', 'nama' => 'Dermatitis', 'jumlah' => 9],
-                    ['kode' => 'R50.9', 'nama' => 'Demam tidak spesifik', 'jumlah' => 7],
-                ],
-                'spesialisasi' => [
-                    ['nama' => 'Anak', 'jumlah' => 30],
-                    ['nama' => 'Penyakit Dalam', 'jumlah' => 28],
-                    ['nama' => 'Kulit', 'jumlah' => 17],
-                    ['nama' => 'Kandungan', 'jumlah' => 12],
-                    ['nama' => 'Lainnya', 'jumlah' => 8],
-                ],
-            ],
-            'tahun' => [
-                'ringkasan' => [
-                    'totalKonsultasi' => 1024,
-                    'rujukanTerhindarkan' => 402,
-                    'rujukanDilakukan' => 118,
-                    'persentase' => 39,
-                    'biayaHemat' => 341700000,
-                    'jamHemat' => 2412,
-                    'rataWaktuTunggu' => 2.6,
-                    'video' => 590,
-                    'teks' => 434,
-                ],
-                'tren' => [
-                    ['label' => 'Jan', 'konsultasi' => 78],
-                    ['label' => 'Feb', 'konsultasi' => 82],
-                    ['label' => 'Mar', 'konsultasi' => 88],
-                    ['label' => 'Apr', 'konsultasi' => 90],
-                    ['label' => 'Mei', 'konsultasi' => 85],
-                    ['label' => 'Jun', 'konsultasi' => 92],
-                    ['label' => 'Jul', 'konsultasi' => 80],
-                    ['label' => 'Agu', 'konsultasi' => 84],
-                    ['label' => 'Sep', 'konsultasi' => 86],
-                    ['label' => 'Okt', 'konsultasi' => 88],
-                    ['label' => 'Nov', 'konsultasi' => 90],
-                    ['label' => 'Des', 'konsultasi' => 81],
-                ],
-                'diagnosis' => [
-                    ['kode' => 'I10', 'nama' => 'Hipertensi esensial', 'jumlah' => 196],
-                    ['kode' => 'J06.9', 'nama' => 'ISPA akut', 'jumlah' => 164],
-                    ['kode' => 'A09', 'nama' => 'Diare dan gastroenteritis', 'jumlah' => 121],
-                    ['kode' => 'L30.9', 'nama' => 'Dermatitis', 'jumlah' => 98],
-                    ['kode' => 'R50.9', 'nama' => 'Demam tidak spesifik', 'jumlah' => 76],
-                ],
-                'spesialisasi' => [
-                    ['nama' => 'Anak', 'jumlah' => 324],
-                    ['nama' => 'Penyakit Dalam', 'jumlah' => 302],
-                    ['nama' => 'Kulit', 'jumlah' => 184],
-                    ['nama' => 'Kandungan', 'jumlah' => 129],
-                    ['nama' => 'Lainnya', 'jumlah' => 85],
-                ],
-            ],
-        ];
+        return match ($periode) {
+            'minggu' => [now()->subDays(6)->startOfDay(), now()->endOfDay()],
+            'tahun' => [now()->subMonths(11)->startOfMonth(), now()->endOfDay()],
+            default => [now()->subDays(29)->startOfDay(), now()->endOfDay()],
+        };
+    }
+
+    /**
+     * Rata-rata waktu tunggu (jam) sejak permintaan sampai dikonfirmasi.
+     *
+     * @param  Collection<int, Konsultasi>  $konsultasi
+     */
+    private function rataWaktuTunggu(Collection $konsultasi): float
+    {
+        $menit = $konsultasi
+            ->filter(fn (Konsultasi $item) => $item->dikonfirmasi_pada !== null)
+            ->map(fn (Konsultasi $item) => max(
+                0,
+                ($item->dikonfirmasi_pada->getTimestamp() - $item->tanggal->getTimestamp()) / 60,
+            ));
+
+        return $menit->isEmpty() ? 0.0 : round($menit->average() / 60, 1);
+    }
+
+    /**
+     * Tren jumlah konsultasi sesuai periode.
+     *
+     * @param  Collection<int, CarbonInterface>  $tanggal
+     * @return list<array{label: string, konsultasi: int}>
+     */
+    private function tren(string $periode, Collection $tanggal): array
+    {
+        if ($periode === 'minggu') {
+            return collect(range(6, 0))
+                ->map(function (int $mundur) use ($tanggal) {
+                    $hari = now()->subDays($mundur)->startOfDay();
+
+                    return [
+                        'label' => $hari->locale('id')->isoFormat('ddd'),
+                        'konsultasi' => $tanggal->filter(fn ($item) => $item->isSameDay($hari))->count(),
+                    ];
+                })
+                ->values()
+                ->all();
+        }
+
+        if ($periode === 'tahun') {
+            return collect(range(11, 0))
+                ->map(function (int $mundur) use ($tanggal) {
+                    $bulan = now()->startOfMonth()->subMonths($mundur);
+
+                    return [
+                        'label' => $bulan->locale('id')->isoFormat('MMM'),
+                        'konsultasi' => $tanggal->filter(fn ($item) => $item->isSameMonth($bulan))->count(),
+                    ];
+                })
+                ->values()
+                ->all();
+        }
+
+        return collect(range(29, 0))
+            ->map(function (int $mundur) use ($tanggal) {
+                $hari = now()->subDays($mundur)->startOfDay();
+
+                return [
+                    'label' => $hari->format('j'),
+                    'konsultasi' => $tanggal->filter(fn ($item) => $item->isSameDay($hari))->count(),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Diagnosis ICD-10 terbanyak pada periode.
+     *
+     * @return list<array{kode: string, nama: string, jumlah: int}>
+     */
+    private function diagnosis(CarbonInterface $mulai, CarbonInterface $selesai): array
+    {
+        return HasilKonsultasi::query()
+            ->join('konsultasi', 'konsultasi.id', '=', 'hasil_konsultasi.konsultasi_id')
+            ->join('icd10', 'icd10.kode', '=', 'hasil_konsultasi.icd10_kode')
+            ->whereBetween('konsultasi.tanggal', [$mulai, $selesai])
+            ->selectRaw('hasil_konsultasi.icd10_kode as kode, icd10.nama_diagnosis as nama, count(*) as jumlah')
+            ->groupBy('hasil_konsultasi.icd10_kode', 'icd10.nama_diagnosis')
+            ->orderByDesc('jumlah')
+            ->limit(5)
+            ->get()
+            ->map(fn ($baris) => [
+                'kode' => (string) $baris->kode,
+                'nama' => (string) $baris->nama,
+                'jumlah' => (int) $baris->jumlah,
+            ])
+            ->all();
+    }
+
+    /**
+     * Distribusi konsultasi per spesialisasi.
+     *
+     * @return list<array{nama: string, jumlah: int}>
+     */
+    private function spesialisasi(CarbonInterface $mulai, CarbonInterface $selesai): array
+    {
+        return Konsultasi::query()
+            ->join('dokter', 'dokter.id', '=', 'konsultasi.dokter_spesialis_id')
+            ->whereBetween('konsultasi.tanggal', [$mulai, $selesai])
+            ->selectRaw("coalesce(nullif(dokter.spesialisasi, ''), 'Lainnya') as nama, count(*) as jumlah")
+            ->groupByRaw("coalesce(nullif(dokter.spesialisasi, ''), 'Lainnya')")
+            ->orderByDesc('jumlah')
+            ->get()
+            ->map(fn ($baris) => [
+                'nama' => (string) $baris->nama,
+                'jumlah' => (int) $baris->jumlah,
+            ])
+            ->all();
     }
 }

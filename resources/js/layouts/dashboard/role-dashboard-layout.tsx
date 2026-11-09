@@ -176,7 +176,7 @@ export default function RoleDashboardLayout({ role, active, title, description, 
                         <TelekarangBrand />
                     </Link>
                     <p className="max-w-[64ch] text-[12px] text-[var(--tk-muted)]">
-                        Prototipe studi kasus Puskesmas Pulau Karang. Seluruh data pasien dan dokter adalah fiktif.
+                        Menghubungkan pasien kepulauan dengan dokter spesialis tanpa harus menempuh perjalanan jauh.
                     </p>
                 </div>
             </footer>

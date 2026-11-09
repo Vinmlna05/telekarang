@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -101,6 +102,14 @@ class PenggunaController extends Controller
 
         $user->forceFill(['email_verified_at' => now()])->save();
 
+        AuditLog::catat(
+            $request->user(),
+            'membuat',
+            'pengguna',
+            (string) $user->id,
+            "Membuat akun {$user->name} sebagai {$this->roleLabel($user->role)}.",
+        );
+
         return to_route('admin.pengguna')
             ->with('success', "Akun {$user->name} berhasil dibuat sebagai {$this->roleLabel($user->role)}.");
     }
@@ -122,6 +131,14 @@ class PenggunaController extends Controller
         ]);
 
         $user->update(['role' => $validated['role']]);
+
+        AuditLog::catat(
+            $request->user(),
+            'mengubah',
+            'pengguna',
+            (string) $user->id,
+            "Mengubah peran {$user->name} menjadi {$this->roleLabel($user->role)}.",
+        );
 
         return back()->with('success', "Peran {$user->name} diubah menjadi {$this->roleLabel($user->role)}.");
     }

@@ -29,8 +29,9 @@ import {
 import { useEffect, useState, type FormEvent } from 'react';
 
 import InputError from '@/components/input-error';
+import ResepObatCard from '@/components/resep-obat-card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { cariKonsultasiPerawat } from '@/data/konsultasi-perawat';
+import { cariKonsultasiPerawatDenganHasil } from '@/data/konsultasi-perawat';
 import DokterAppLayout from '@/layouts/dokter/dokter-app-layout';
 import { cn } from '@/lib/utils';
 
@@ -219,7 +220,7 @@ function angkaDesimal(nilai: number): string {
 }
 
 export default function HasilDokter({ konsultasiId }: HasilDokterProps) {
-    const data = cariKonsultasiPerawat(konsultasiId);
+    const data = cariKonsultasiPerawatDenganHasil(konsultasiId);
     const hasil = data.hasil;
     const rujuk = hasil?.keputusanRujuk === true;
 
@@ -572,6 +573,8 @@ export default function HasilDokter({ konsultasiId }: HasilDokterProps) {
                                     {data.mode === 'video' ? 'Mode video' : 'Mode teks'}
                                 </span>
                             </div>
+
+                            {!rujuk && <ResepObatCard resep={hasil.resep} selaluTampil className="mt-3" />}
                         </div>
                     </section>
 
