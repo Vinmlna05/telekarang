@@ -5,7 +5,9 @@ import {
     CalendarDays,
     CheckCircle2,
     ChevronRight,
+    HeartPulse,
     History,
+    IdCard,
     Info,
     KeyRound,
     Loader2,
@@ -14,6 +16,7 @@ import {
     Mail,
     Monitor,
     Moon,
+    Phone,
     ShieldCheck,
     Sun,
     UserRound,
@@ -36,6 +39,36 @@ const inputClass =
     'focus-visible:ring-tk-accent h-11 rounded-xl border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] px-3.5 text-sm text-[var(--tk-text)] placeholder:text-[var(--tk-muted)]';
 const primaryButton =
     'bg-tk-green-500 hover:bg-tk-green-400 focus-visible:ring-tk-accent inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-[11px] font-bold text-white transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--tk-page)] disabled:pointer-events-none disabled:opacity-60';
+const textareaClass =
+    'focus-visible:ring-tk-accent min-h-24 rounded-xl border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] px-3.5 py-3 text-sm text-[var(--tk-text)] placeholder:text-[var(--tk-muted)]';
+const selectClass =
+    'focus-visible:ring-tk-accent h-11 rounded-xl border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] px-3.5 text-sm text-[var(--tk-text)]';
+
+interface KontakDarurat {
+    nama: string;
+    hubungan: string;
+    telepon: string;
+    teleponHref: string;
+}
+
+interface ProfilAkunData {
+    nama: string;
+    nomorRekamMedis: string | null;
+    nik: string | null;
+    tanggalLahir: string | null;
+    tglLahirInput: string | null;
+    usia: number | null;
+    jenisKelamin: string | null;
+    alamat: string | null;
+    telepon: string | null;
+    golonganDarah: string | null;
+    alergi: string | null;
+    obatRutin: string | null;
+    diagnosisTerakhir: string | null;
+    kontakDarurat: KontakDarurat | null;
+    terdaftarSejak: string;
+    statusVerifikasi: 'TERVERIFIKASI' | 'MENUNGGU_VERIFIKASI';
+}
 
 const themeOptions: Array<{ value: Appearance; label: string; description: string; icon: LucideIcon }> = [
     {
@@ -118,7 +151,15 @@ function SectionHeader({ icon: Icon, title, description }: { icon: LucideIcon; t
     );
 }
 
-export default function AkunPasien({ mustVerifyEmail, status }: { mustVerifyEmail: boolean; status?: string | null }) {
+export default function AkunPasien({
+    mustVerifyEmail,
+    status,
+    profil,
+}: {
+    mustVerifyEmail: boolean;
+    status?: string | null;
+    profil: ProfilAkunData;
+}) {
     const { auth, flash } = usePage<SharedData>().props;
     const { appearance, updateAppearance } = useAppearance();
     const emailTerverifikasi = auth.user.email_verified_at !== null;
@@ -133,6 +174,27 @@ export default function AkunPasien({ mustVerifyEmail, status }: { mustVerifyEmai
     } = useForm({
         name: auth.user.name,
         email: auth.user.email,
+    });
+
+    const {
+        data: profilData,
+        setData: setProfilData,
+        patch: patchProfil,
+        errors: profilErrors,
+        processing: memprosesProfil,
+        recentlySuccessful: profilPasienTersimpan,
+    } = useForm({
+        nik: profil.nik ?? '',
+        tgl_lahir: profil.tglLahirInput ?? '',
+        jenis_kelamin: profil.jenisKelamin ?? '',
+        telepon: profil.telepon ?? '',
+        alamat: profil.alamat ?? '',
+        golongan_darah: profil.golonganDarah ?? '',
+        alergi: profil.alergi ?? '',
+        obat_rutin: profil.obatRutin ?? '',
+        kontak_darurat_nama: profil.kontakDarurat?.nama ?? '',
+        kontak_darurat_hubungan: profil.kontakDarurat?.hubungan ?? '',
+        kontak_darurat_telepon: profil.kontakDarurat?.telepon ?? '',
     });
 
     const {
@@ -153,6 +215,12 @@ export default function AkunPasien({ mustVerifyEmail, status }: { mustVerifyEmai
         event.preventDefault();
 
         patch(route('pasien.akun.update'), { preserveScroll: true });
+    };
+
+    const simpanProfilPasien: FormEventHandler = (event) => {
+        event.preventDefault();
+
+        patchProfil(route('pasien.akun.profil'), { preserveScroll: true });
     };
 
     const simpanPassword: FormEventHandler = (event) => {
@@ -293,8 +361,8 @@ export default function AkunPasien({ mustVerifyEmail, status }: { mustVerifyEmai
                             <div className="flex items-start gap-2 rounded-2xl bg-[var(--tk-page-alt)] p-3.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
                                 <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                                 <p>
-                                    Jika email diubah, status verifikasi email akan direset. Data medis seperti NIK, alamat, dan nomor rekam medis
-                                    tetap hanya dapat diperbarui oleh petugas puskesmas.
+                                    Jika email diubah, status verifikasi email akan direset. Data identitas dan kontak dapat Anda lengkapi pada bagian
+                                    Data profil pasien. Nomor rekam medis dibuat sistem dan hanya ditampilkan setelah petugas memverifikasi.
                                 </p>
                             </div>
 
@@ -332,6 +400,261 @@ export default function AkunPasien({ mustVerifyEmail, status }: { mustVerifyEmai
 
                                 {profilTersimpan && (
                                     <span className="text-tk-green-500 dark:text-tk-accent text-[10px] font-semibold">Tersimpan</span>
+                                )}
+                            </div>
+                        </form>
+                    </section>
+
+                    <section id="data-profil" aria-labelledby="judul-data-profil" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div id="judul-data-profil">
+                                <SectionHeader
+                                    icon={IdCard}
+                                    title="Data profil pasien"
+                                    description="Lengkapi identitas, kontak, dan informasi kesehatan dasar untuk mempercepat skrining di puskesmas."
+                                />
+                            </div>
+                            <span
+                                className={cn(
+                                    'inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-[9px] font-bold',
+                                    profil.statusVerifikasi === 'TERVERIFIKASI'
+                                        ? 'text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12]'
+                                        : 'bg-tk-warning/15 text-tk-warning',
+                                )}
+                            >
+                                {profil.statusVerifikasi === 'TERVERIFIKASI' ? (
+                                    <ShieldCheck className="size-3" aria-hidden="true" />
+                                ) : (
+                                    <AlertTriangle className="size-3" aria-hidden="true" />
+                                )}
+                                {profil.statusVerifikasi === 'TERVERIFIKASI' ? 'Terverifikasi' : 'Menunggu verifikasi'}
+                            </span>
+                        </div>
+
+                        <div className="mt-4 grid gap-2 rounded-2xl bg-[var(--tk-page-alt)] p-3.5 sm:grid-cols-2">
+                            <div>
+                                <p className="flex items-center gap-1 text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">
+                                    <Lock className="size-3" aria-hidden="true" />
+                                    Nama rekam medis
+                                </p>
+                                <p className="mt-1 text-[11px] font-bold">{profil.nama}</p>
+                            </div>
+                            <div>
+                                <p className="flex items-center gap-1 text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">
+                                    <Lock className="size-3" aria-hidden="true" />
+                                    Nomor rekam medis
+                                </p>
+                                <p className="mt-1 text-[11px] font-bold">{profil.nomorRekamMedis ?? 'Terbit setelah verifikasi petugas'}</p>
+                            </div>
+                        </div>
+
+                        <p className="mt-3 flex items-start gap-1.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                            Nama rekam medis dan nomor rekam medis dibuat sistem serta tidak dapat diubah dari halaman ini. Data yang Anda isi akan
+                            diverifikasi petugas puskesmas sebelum dipakai untuk pelayanan.
+                        </p>
+
+                        <form onSubmit={simpanProfilPasien} className="mt-5 space-y-5">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="nik" className="text-[11px] font-semibold">
+                                        NIK
+                                    </Label>
+                                    <Input
+                                        id="nik"
+                                        value={profilData.nik}
+                                        onChange={(event) => setProfilData('nik', event.target.value)}
+                                        inputMode="numeric"
+                                        autoComplete="off"
+                                        placeholder="16 digit NIK"
+                                        className={inputClass}
+                                    />
+                                    <InputError message={profilErrors.nik} className="text-tk-danger text-[11px]" />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="tgl_lahir" className="text-[11px] font-semibold">
+                                        Tanggal lahir
+                                    </Label>
+                                    <Input
+                                        id="tgl_lahir"
+                                        type="date"
+                                        value={profilData.tgl_lahir}
+                                        onChange={(event) => setProfilData('tgl_lahir', event.target.value)}
+                                        className={inputClass}
+                                    />
+                                    <InputError message={profilErrors.tgl_lahir} className="text-tk-danger text-[11px]" />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="jenis_kelamin" className="text-[11px] font-semibold">
+                                        Jenis kelamin
+                                    </Label>
+                                    <select
+                                        id="jenis_kelamin"
+                                        value={profilData.jenis_kelamin}
+                                        onChange={(event) => setProfilData('jenis_kelamin', event.target.value)}
+                                        className={selectClass}
+                                    >
+                                        <option value="">Pilih jenis kelamin</option>
+                                        <option value="Laki-laki">Laki-laki</option>
+                                        <option value="Perempuan">Perempuan</option>
+                                    </select>
+                                    <InputError message={profilErrors.jenis_kelamin} className="text-tk-danger text-[11px]" />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="telepon" className="text-[11px] font-semibold">
+                                        Nomor telepon
+                                    </Label>
+                                    <Input
+                                        id="telepon"
+                                        value={profilData.telepon}
+                                        onChange={(event) => setProfilData('telepon', event.target.value)}
+                                        inputMode="tel"
+                                        autoComplete="tel"
+                                        placeholder="08xxxxxxxxxx"
+                                        className={inputClass}
+                                    />
+                                    <InputError message={profilErrors.telepon} className="text-tk-danger text-[11px]" />
+                                </div>
+
+                                <div className="grid gap-2 sm:col-span-2">
+                                    <Label htmlFor="alamat" className="text-[11px] font-semibold">
+                                        Alamat
+                                    </Label>
+                                    <textarea
+                                        id="alamat"
+                                        value={profilData.alamat}
+                                        onChange={(event) => setProfilData('alamat', event.target.value)}
+                                        placeholder="Dusun, desa, dan pulau"
+                                        className={textareaClass}
+                                    />
+                                    <InputError message={profilErrors.alamat} className="text-tk-danger text-[11px]" />
+                                </div>
+                            </div>
+
+                            <div className="border-t border-[var(--tk-glass-border)] pt-4">
+                                <div className="flex items-center gap-2">
+                                    <HeartPulse className="size-4 text-[var(--tk-muted)]" aria-hidden="true" />
+                                    <p className="text-[11px] font-bold">Informasi kesehatan dasar</p>
+                                </div>
+
+                                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="golongan_darah" className="text-[11px] font-semibold">
+                                            Golongan darah
+                                        </Label>
+                                        <select
+                                            id="golongan_darah"
+                                            value={profilData.golongan_darah}
+                                            onChange={(event) => setProfilData('golongan_darah', event.target.value)}
+                                            className={selectClass}
+                                        >
+                                            <option value="">Pilih golongan darah</option>
+                                            <option value="A">A</option>
+                                            <option value="B">B</option>
+                                            <option value="AB">AB</option>
+                                            <option value="O">O</option>
+                                            <option value="TIDAK_DIKETAHUI">Tidak diketahui</option>
+                                        </select>
+                                        <InputError message={profilErrors.golongan_darah} className="text-tk-danger text-[11px]" />
+                                    </div>
+
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="obat_rutin" className="text-[11px] font-semibold">
+                                            Obat rutin
+                                        </Label>
+                                        <Input
+                                            id="obat_rutin"
+                                            value={profilData.obat_rutin}
+                                            onChange={(event) => setProfilData('obat_rutin', event.target.value)}
+                                            placeholder="Nama obat dan dosis, atau kosongkan"
+                                            className={inputClass}
+                                        />
+                                        <InputError message={profilErrors.obat_rutin} className="text-tk-danger text-[11px]" />
+                                    </div>
+
+                                    <div className="grid gap-2 sm:col-span-2">
+                                        <Label htmlFor="alergi" className="text-[11px] font-semibold">
+                                            Alergi
+                                        </Label>
+                                        <textarea
+                                            id="alergi"
+                                            value={profilData.alergi}
+                                            onChange={(event) => setProfilData('alergi', event.target.value)}
+                                            placeholder="Alergi obat atau makanan yang diketahui"
+                                            className={textareaClass}
+                                        />
+                                        <InputError message={profilErrors.alergi} className="text-tk-danger text-[11px]" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="border-t border-[var(--tk-glass-border)] pt-4">
+                                <div className="flex items-center gap-2">
+                                    <Phone className="size-4 text-[var(--tk-muted)]" aria-hidden="true" />
+                                    <p className="text-[11px] font-bold">Kontak darurat</p>
+                                </div>
+
+                                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="kontak_darurat_nama" className="text-[11px] font-semibold">
+                                            Nama kontak
+                                        </Label>
+                                        <Input
+                                            id="kontak_darurat_nama"
+                                            value={profilData.kontak_darurat_nama}
+                                            onChange={(event) => setProfilData('kontak_darurat_nama', event.target.value)}
+                                            placeholder="Nama keluarga atau wali"
+                                            className={inputClass}
+                                        />
+                                        <InputError message={profilErrors.kontak_darurat_nama} className="text-tk-danger text-[11px]" />
+                                    </div>
+
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="kontak_darurat_hubungan" className="text-[11px] font-semibold">
+                                            Hubungan
+                                        </Label>
+                                        <Input
+                                            id="kontak_darurat_hubungan"
+                                            value={profilData.kontak_darurat_hubungan}
+                                            onChange={(event) => setProfilData('kontak_darurat_hubungan', event.target.value)}
+                                            placeholder="Contoh: ibu, suami, tetangga"
+                                            className={inputClass}
+                                        />
+                                        <InputError message={profilErrors.kontak_darurat_hubungan} className="text-tk-danger text-[11px]" />
+                                    </div>
+
+                                    <div className="grid gap-2 sm:col-span-2">
+                                        <Label htmlFor="kontak_darurat_telepon" className="text-[11px] font-semibold">
+                                            Telepon kontak darurat
+                                        </Label>
+                                        <Input
+                                            id="kontak_darurat_telepon"
+                                            value={profilData.kontak_darurat_telepon}
+                                            onChange={(event) => setProfilData('kontak_darurat_telepon', event.target.value)}
+                                            inputMode="tel"
+                                            placeholder="08xxxxxxxxxx"
+                                            className={inputClass}
+                                        />
+                                        <InputError message={profilErrors.kontak_darurat_telepon} className="text-tk-danger text-[11px]" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3">
+                                <button type="submit" disabled={memprosesProfil} className={primaryButton}>
+                                    {memprosesProfil ? (
+                                        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                                    ) : (
+                                        <CheckCircle2 className="size-4" aria-hidden="true" />
+                                    )}
+                                    {memprosesProfil ? 'Menyimpan...' : 'Simpan data profil'}
+                                </button>
+
+                                {profilPasienTersimpan && (
+                                    <span className="text-tk-green-500 dark:text-tk-accent text-[10px] font-semibold">Profil tersimpan</span>
                                 )}
                             </div>
                         </form>
@@ -539,8 +862,8 @@ export default function AkunPasien({ mustVerifyEmail, status }: { mustVerifyEmai
                                     Data medis Anda
                                 </h2>
                                 <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                    Perubahan identitas medis dan penghapusan akun harus melalui petugas Puskesmas Pulau Karang agar rekam medis tetap
-                                    terjaga.
+                                    Identitas yang Anda isi akan diverifikasi petugas Puskesmas Pulau Karang. Penghapusan akun dan koreksi data medis
+                                    resmi tetap harus melalui petugas agar rekam medis terjaga.
                                 </p>
                             </div>
                         </div>

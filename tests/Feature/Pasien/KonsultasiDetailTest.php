@@ -1,21 +1,119 @@
 <?php
 
+use App\Models\Dokter;
+use App\Models\HasilKonsultasi;
+use App\Models\Icd10;
+use App\Models\Konsultasi;
+use App\Models\Pasien;
+use App\Models\Skrining;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
+
+beforeEach(function () {
+    Carbon::setTestNow(Carbon::parse('2026-11-09 08:00:00'));
+});
+
+afterEach(function () {
+    Carbon::setTestNow();
+});
+
+function buatKonsultasiPasienDetail(): array
+{
+    $user = User::factory()->create(['role' => 'pasien']);
+    $pasien = Pasien::create([
+        'user_id' => $user->id,
+        'nama' => 'Salim Hidayat',
+        'nik' => '9101000000000003',
+    ]);
+
+    $dokterUser = User::factory()->create(['role' => 'spesialis']);
+    $dokter = Dokter::create([
+        'user_id' => $dokterUser->id,
+        'nama' => 'dr. Hendra Wijaya, Sp.PD',
+        'peran' => 'spesialis',
+        'spesialisasi' => 'Penyakit Dalam',
+        'faskes' => 'RS Kabupaten',
+    ]);
+
+    $konsultasi = Konsultasi::create([
+        'pasien_id' => $pasien->id,
+        'dokter_spesialis_id' => $dokter->id,
+        'mode' => 'teks',
+        'status' => 'SELESAI',
+        'keluhan' => 'Nyeri ulu hati',
+        'tanggal' => '2026-11-08 10:00:00',
+    ]);
+
+    return [$user, $pasien, $dokter, $konsultasi];
+}
 
 test('guests are redirected from the consultation detail page', function () {
     $this->get('/pasien/konsultasi/1')->assertRedirect(route('login'));
 });
 
-test('patients can view a consultation detail page', function () {
-    $pasien = User::factory()->create(['role' => 'pasien']);
+test('patients can view their own consultation detail', function () {
+    [$user, , , $konsultasi] = buatKonsultasiPasienDetail();
 
-    $this->actingAs($pasien)
-        ->get('/pasien/konsultasi/2')
+    $icd = Icd10::create(['kode' => 'K30', 'nama_diagnosis' => 'Dispepsia']);
+    HasilKonsultasi::create([
+        'konsultasi_id' => $konsultasi->id,
+        'icd10_kode' => $icd->kode,
+        'saran' => 'Hindari makanan pedas.',
+        'keputusan_rujuk' => false,
+        'waktu' => '2026-11-08 11:00:00',
+    ]);
+    Skrining::create([
+        'konsultasi_id' => $konsultasi->id,
+        'perawat_id' => User::factory()->create(['role' => 'perawat'])->id,
+        'berat' => 60,
+        'tinggi' => 165,
+        'sistol' => 120,
+        'diastol' => 80,
+        'suhu' => 36.8,
+        'nadi' => 80,
+        'spo2' => 99,
+        'tanda_bahaya' => false,
+        'catatan' => 'Stabil.',
+        'waktu' => '2026-11-08 09:30:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get('/pasien/konsultasi/'.$konsultasi->id)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('pasien/konsultasi-detail')
-            ->where('konsultasiId', 2));
+            ->where('konsultasi.id', $konsultasi->id)
+            ->where('konsultasi.nomor', 'KNS-2026-'.str_pad((string) $konsultasi->id, 4, '0', STR_PAD_LEFT))
+            ->where('konsultasi.status', 'SELESAI')
+            ->where('konsultasi.hasil.icd10Kode', 'K30')
+            ->where('konsultasi.hasil.icd10Nama', 'Dispepsia')
+            ->where('konsultasi.hasil.keputusanRujuk', false)
+            ->where('konsultasi.skrining.spo2', 99)
+            ->where('konsultasi.skrining.sistol', 120)
+            ->where('konsultasi.skrining.diastol', 80));
+});
+
+test('consultation detail tolerates empty screening and result', function () {
+    [$user, , , $konsultasi] = buatKonsultasiPasienDetail();
+    $konsultasi->update(['status' => 'BERLANGSUNG']);
+
+    $this->actingAs($user)
+        ->get('/pasien/konsultasi/'.$konsultasi->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('konsultasi.status', 'BERLANGSUNG')
+            ->where('konsultasi.skrining', null)
+            ->where('konsultasi.hasil', null));
+});
+
+test('patients cannot view another patient consultation', function () {
+    [, , , $konsultasi] = buatKonsultasiPasienDetail();
+    $lain = User::factory()->create(['role' => 'pasien']);
+
+    $this->actingAs($lain)
+        ->get('/pasien/konsultasi/'.$konsultasi->id)
+        ->assertNotFound();
 });
 
 test('consultation detail requires a numeric id', function () {

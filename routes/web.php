@@ -11,6 +11,11 @@ use App\Http\Controllers\Dokter\ReviewController as DokterReviewController;
 use App\Http\Controllers\Dokter\ReviewDetailController as DokterReviewDetailController;
 use App\Http\Controllers\Pasien\AkunController as PasienAkunController;
 use App\Http\Controllers\Pasien\BerandaController;
+use App\Http\Controllers\Pasien\JadwalController as PasienJadwalController;
+use App\Http\Controllers\Pasien\KonsultasiBaruController as PasienKonsultasiBaruController;
+use App\Http\Controllers\Pasien\KonsultasiDetailController as PasienKonsultasiDetailController;
+use App\Http\Controllers\Pasien\ProfilController as PasienProfilController;
+use App\Http\Controllers\Pasien\RiwayatController as PasienRiwayatController;
 use App\Http\Controllers\Perawat\BerandaController as PerawatBerandaController;
 use App\Http\Controllers\Perawat\KonsultasiBaruController as PerawatKonsultasiBaruController;
 use App\Http\Controllers\Perawat\KonsultasiController as PerawatKonsultasiController;
@@ -18,6 +23,7 @@ use App\Http\Controllers\Perawat\PasienController as PerawatPasienController;
 use App\Http\Controllers\Perawat\PermintaanController as PerawatPermintaanController;
 use App\Http\Controllers\Perawat\SkriningController as PerawatSkriningController;
 use App\Http\Controllers\Perawat\TindakLanjutController as PerawatTindakLanjutController;
+use App\Http\Controllers\Perawat\VerifikasiPasienController as PerawatVerifikasiPasienController;
 use App\Http\Controllers\Spesialis\BerandaController as SpesialisBerandaController;
 use App\Http\Controllers\Spesialis\HasilController as SpesialisHasilController;
 use App\Http\Controllers\Spesialis\JadwalController as SpesialisJadwalController;
@@ -46,29 +52,24 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:pasien')
         ->name('pasien.beranda');
 
-    Route::get('pasien/jadwal', fn () => Inertia::render('pasien/jadwal'))
+    Route::get('pasien/jadwal', PasienJadwalController::class)
         ->middleware('role:pasien')
         ->name('pasien.jadwal');
 
-    Route::get('pasien/konsultasi/baru', fn () => Inertia::render('pasien/konsultasi-baru', [
-        'dokterAwal' => request()->integer('dokter') ?: null,
-        'jadwalAwal' => request()->string('jadwal')->toString(),
-    ]))
+    Route::get('pasien/konsultasi/baru', PasienKonsultasiBaruController::class)
         ->middleware('role:pasien')
         ->name('pasien.konsultasi.baru');
 
-    Route::get('pasien/konsultasi/{konsultasi}', fn (string $konsultasi) => Inertia::render('pasien/konsultasi-detail', [
-        'konsultasiId' => (int) $konsultasi,
-    ]))
+    Route::get('pasien/konsultasi/{konsultasi}', PasienKonsultasiDetailController::class)
         ->whereNumber('konsultasi')
         ->middleware('role:pasien')
         ->name('pasien.konsultasi.detail');
 
-    Route::get('pasien/riwayat', fn () => Inertia::render('pasien/riwayat'))
+    Route::get('pasien/riwayat', PasienRiwayatController::class)
         ->middleware('role:pasien')
         ->name('pasien.riwayat');
 
-    Route::get('pasien/profil', fn () => Inertia::render('pasien/profil'))
+    Route::get('pasien/profil', PasienProfilController::class)
         ->middleware('role:pasien')
         ->name('pasien.profil');
 
@@ -83,6 +84,10 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('pasien/akun', [PasienAkunController::class, 'update'])
         ->middleware('role:pasien')
         ->name('pasien.akun.update');
+
+    Route::patch('pasien/akun/profil', [PasienAkunController::class, 'updateProfil'])
+        ->middleware('role:pasien')
+        ->name('pasien.akun.profil');
 
     Route::get('perawat', PerawatBerandaController::class)
         ->middleware('role:perawat')
@@ -114,6 +119,10 @@ Route::middleware(['auth'])->group(function () {
     Route::get('perawat/pasien', PerawatPasienController::class)
         ->middleware('role:perawat')
         ->name('perawat.pasien');
+
+    Route::patch('perawat/pasien/{pasien}/verifikasi', PerawatVerifikasiPasienController::class)
+        ->middleware('role:perawat')
+        ->name('perawat.pasien.verifikasi');
 
     Route::get('perawat/notifikasi', fn () => Inertia::render('perawat/notifikasi'))
         ->middleware('role:perawat')

@@ -112,4 +112,12 @@ class Konsultasi extends Model
     {
         return $this->hasOne(HasilKonsultasi::class);
     }
+
+    /**
+     * Data skrining perawat.
+     */
+    public function skrining(): HasOne
+    {
+        return $this->hasOne(Skrining::class);
+    }
 }

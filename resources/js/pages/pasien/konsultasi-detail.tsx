@@ -28,21 +28,63 @@ import InputError from '@/components/input-error';
 import KeputusanRujukBanner from '@/components/keputusan-rujuk-banner';
 import ResepObatCard from '@/components/resep-obat-card';
 import { Input } from '@/components/ui/input';
+import { bacaHasilSpesialis } from '@/data/hasil-spesialis';
 import {
-    cariKonsultasi,
     modeKonsultasiLabels,
     statusKonsultasiLabels,
     type ModeKonsultasi,
     type PengirimPesan,
     type PesanKonsultasi,
+    type StatusKonsultasi,
 } from '@/data/konsultasi-pasien';
 import { alasanKoneksi, useConnection } from '@/hooks/use-connection';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { bacaPesanLokal, kompresGambar, simpanPesanLokal } from '@/lib/chat';
 import { cn } from '@/lib/utils';
 
+interface SkriningDetail {
+    perawat: string;
+    beratBadan: number;
+    tinggiBadan: number;
+    sistol: number;
+    diastol: number;
+    suhu: number;
+    nadi: number;
+    spo2: number;
+    tandaBahaya: boolean;
+    catatan: string;
+    waktu: string;
+}
+
+interface HasilDetail {
+    icd10Kode: string;
+    icd10Nama: string;
+    saran: string;
+    keputusanRujuk: boolean;
+    alasanRujuk: string | null;
+    biayaRujukan: number | null;
+    tindakLanjut: string;
+    waktu: string;
+}
+
+interface KonsultasiDetailData {
+    id: number;
+    nomor: string;
+    tanggal: string;
+    tanggalSingkat: string;
+    dokter: string;
+    spesialisasi: string;
+    faskes: string;
+    jadwal: string;
+    mode: ModeKonsultasi;
+    status: StatusKonsultasi;
+    keluhan: string;
+    skrining: SkriningDetail | null;
+    hasil: HasilDetail | null;
+}
+
 interface KonsultasiDetailProps {
-    konsultasiId: number;
+    konsultasi: KonsultasiDetailData;
 }
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
@@ -72,10 +114,13 @@ function angkaDesimal(nilai: number): string {
     return nilai.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
-export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps) {
-    const data = cariKonsultasi(konsultasiId);
+export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) {
+    const data = konsultasi;
+    const hasil = data.hasil;
+    const skrining = data.skrining;
     const koneksi = useConnection();
     const kunciPesan = `telekarang:konsultasi-pasien:${data.id}`;
+    const resepTersimpan = bacaHasilSpesialis(data.id)?.resep ?? null;
 
     const [pesanLokal, setPesanLokal] = useState<PesanKonsultasi[]>([]);
     const [pesanBaru, setPesanBaru] = useState('');
@@ -89,7 +134,7 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
     const [tersalin, setTersalin] = useState(false);
 
     const ujungChat = useRef<HTMLDivElement>(null);
-    const semuaPesan = [...data.pesan, ...pesanLokal];
+    const semuaPesan = pesanLokal;
     const modeLabel = modeKonsultasiLabels[mode];
     const statusLabel = statusKonsultasiLabels[data.status];
     const tautanVideo = `https://meet.jit.si/TeleKarang-${data.nomor}`;
@@ -218,14 +263,16 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
         setErrorPesan(undefined);
     }
 
-    const tandaVital = [
-        { label: 'Berat badan', nilai: String(data.skrining.beratBadan), satuan: 'kg' },
-        { label: 'Tinggi badan', nilai: String(data.skrining.tinggiBadan), satuan: 'cm' },
-        { label: 'Tekanan darah', nilai: `${data.skrining.sistol}/${data.skrining.diastol}`, satuan: 'mmHg' },
-        { label: 'Suhu tubuh', nilai: angkaDesimal(data.skrining.suhu), satuan: '°C' },
-        { label: 'Nadi', nilai: String(data.skrining.nadi), satuan: 'x/menit' },
-        { label: 'SpO₂', nilai: String(data.skrining.spo2), satuan: '%' },
-    ];
+    const tandaVital = skrining
+        ? [
+              { label: 'Berat badan', nilai: String(skrining.beratBadan), satuan: 'kg' },
+              { label: 'Tinggi badan', nilai: String(skrining.tinggiBadan), satuan: 'cm' },
+              { label: 'Tekanan darah', nilai: `${skrining.sistol}/${skrining.diastol}`, satuan: 'mmHg' },
+              { label: 'Suhu tubuh', nilai: angkaDesimal(skrining.suhu), satuan: '°C' },
+              { label: 'Nadi', nilai: String(skrining.nadi), satuan: 'x/menit' },
+              { label: 'SpO₂', nilai: String(skrining.spo2), satuan: '%' },
+          ]
+        : [];
 
     return (
         <PasienAppLayout
@@ -273,7 +320,7 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
                                 </div>
 
                                 <h2 id="status-konsultasi" className="text-tk-deep mt-4 text-2xl leading-tight font-extrabold">
-                                    Konsultasi selesai
+                                    {data.status === 'SELESAI' ? 'Konsultasi selesai' : statusLabel}
                                 </h2>
                                 <p className="text-tk-deep/75 mt-1 text-xs">
                                     {data.tanggal} · {data.dokter}
@@ -282,11 +329,13 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
                                 <div className="mt-4 flex flex-wrap gap-2">
                                     <span className="bg-tk-deep text-tk-mint inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold">
                                         <ShieldCheck className="size-3.5" aria-hidden="true" />
-                                        {data.hasil.keputusanRujuk ? 'Dirujuk ke RS' : 'Rujukan terhindarkan'}
+                                        {hasil === null ? 'Menunggu hasil dokter' : hasil.keputusanRujuk ? 'Dirujuk ke RS' : 'Rujukan terhindarkan'}
                                     </span>
-                                    <span className="text-tk-deep inline-flex items-center rounded-full bg-white/25 px-3 py-1.5 text-[10px] font-bold">
-                                        {data.hasil.icd10Kode} · {data.hasil.icd10Nama}
-                                    </span>
+                                    {hasil && (
+                                        <span className="text-tk-deep inline-flex items-center rounded-full bg-white/25 px-3 py-1.5 text-[10px] font-bold">
+                                            {hasil.icd10Kode} · {hasil.icd10Nama}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -313,7 +362,7 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
                                     Data klinis awal
                                 </h2>
                                 <p className="mt-1 text-[10px] text-[var(--tk-muted)]">
-                                    Diisi {data.skrining.perawat} · {data.skrining.waktu}
+                                    {skrining ? `Diisi ${skrining.perawat} · ${skrining.waktu}` : 'Belum ada data skrining dari perawat'}
                                 </p>
                             </div>
                             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--tk-page-alt)] px-2.5 py-1.5 text-[9px] font-semibold text-[var(--tk-muted)]">
@@ -322,54 +371,65 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
                             </span>
                         </div>
 
-                        <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                            {tandaVital.map((item) => (
-                                <div key={item.label} className="rounded-2xl bg-[var(--tk-page-alt)] p-3">
-                                    <dt className="text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">{item.label}</dt>
-                                    <dd className="mt-1.5 text-sm font-bold">
-                                        {item.nilai}
-                                        <span className="ml-1 text-[9px] font-medium text-[var(--tk-muted)]">{item.satuan}</span>
-                                    </dd>
+                        {skrining ? (
+                            <>
+                                <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                    {tandaVital.map((item) => (
+                                        <div key={item.label} className="rounded-2xl bg-[var(--tk-page-alt)] p-3">
+                                            <dt className="text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">
+                                                {item.label}
+                                            </dt>
+                                            <dd className="mt-1.5 text-sm font-bold">
+                                                {item.nilai}
+                                                <span className="ml-1 text-[9px] font-medium text-[var(--tk-muted)]">{item.satuan}</span>
+                                            </dd>
+                                        </div>
+                                    ))}
+                                </dl>
+
+                                <div
+                                    className={cn(
+                                        'mt-3 flex items-start gap-2.5 rounded-2xl p-3.5',
+                                        skrining.tandaBahaya ? 'bg-tk-danger/10' : 'bg-tk-green-500/[0.08]',
+                                    )}
+                                >
+                                    <span
+                                        className={cn(
+                                            'grid size-8 shrink-0 place-items-center rounded-full',
+                                            skrining.tandaBahaya
+                                                ? 'bg-tk-danger/15 text-tk-danger'
+                                                : 'text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12]',
+                                        )}
+                                    >
+                                        {skrining.tandaBahaya ? (
+                                            <Info className="size-4" aria-hidden="true" />
+                                        ) : (
+                                            <ShieldCheck className="size-4" aria-hidden="true" />
+                                        )}
+                                    </span>
+                                    <div>
+                                        <p className={cn('text-[11px] font-bold', skrining.tandaBahaya ? 'text-tk-danger' : 'text-[var(--tk-text)]')}>
+                                            {skrining.tandaBahaya ? 'Tanda bahaya terdeteksi' : 'Tidak ada tanda bahaya'}
+                                        </p>
+                                        <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                            {skrining.tandaBahaya
+                                                ? 'Pasien diprioritaskan untuk evaluasi dokter dan kemungkinan rujukan segera.'
+                                                : 'Hasil triase otomatis tidak menemukan kondisi yang memerlukan rujukan gawat darurat.'}
+                                        </p>
+                                    </div>
                                 </div>
-                            ))}
-                        </dl>
 
-                        <div
-                            className={cn(
-                                'mt-3 flex items-start gap-2.5 rounded-2xl p-3.5',
-                                data.skrining.tandaBahaya ? 'bg-tk-danger/10' : 'bg-tk-green-500/[0.08]',
-                            )}
-                        >
-                            <span
-                                className={cn(
-                                    'grid size-8 shrink-0 place-items-center rounded-full',
-                                    data.skrining.tandaBahaya
-                                        ? 'bg-tk-danger/15 text-tk-danger'
-                                        : 'text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12]',
-                                )}
-                            >
-                                {data.skrining.tandaBahaya ? (
-                                    <Info className="size-4" aria-hidden="true" />
-                                ) : (
-                                    <ShieldCheck className="size-4" aria-hidden="true" />
-                                )}
-                            </span>
-                            <div>
-                                <p className={cn('text-[11px] font-bold', data.skrining.tandaBahaya ? 'text-tk-danger' : 'text-[var(--tk-text)]')}>
-                                    {data.skrining.tandaBahaya ? 'Tanda bahaya terdeteksi' : 'Tidak ada tanda bahaya'}
-                                </p>
-                                <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                    {data.skrining.tandaBahaya
-                                        ? 'Pasien diprioritaskan untuk evaluasi dokter dan kemungkinan rujukan segera.'
-                                        : 'Hasil triase otomatis tidak menemukan kondisi yang memerlukan rujukan gawat darurat.'}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="mt-3 rounded-2xl border border-[var(--tk-glass-border)] p-3.5">
-                            <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Catatan perawat</p>
-                            <p className="mt-1 text-[11px] leading-relaxed">{data.skrining.catatan}</p>
-                        </div>
+                                <div className="mt-3 rounded-2xl border border-[var(--tk-glass-border)] p-3.5">
+                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Catatan perawat</p>
+                                    <p className="mt-1 text-[11px] leading-relaxed">{skrining.catatan || 'Tidak ada catatan tambahan.'}</p>
+                                </div>
+                            </>
+                        ) : (
+                            <p className="mt-4 rounded-2xl bg-[var(--tk-page-alt)] p-4 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                Data skrining belum tersedia. Perawat akan mengisi berat, tinggi, tekanan darah, suhu, nadi, dan SpO₂ sebelum
+                                konsultasi diteruskan ke dokter spesialis.
+                            </p>
+                        )}
 
                         <p className="mt-3 flex items-start gap-1.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
                             <Lock className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
@@ -388,42 +448,53 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
                                     Keputusan dokter spesialis
                                 </h2>
                                 <p className="mt-1 text-[10px] text-[var(--tk-muted)]">
-                                    {data.dokter} · {data.hasil.waktu}
+                                    {hasil ? `${data.dokter} · ${hasil.waktu}` : 'Menunggu dokter mengisi hasil konsultasi'}
                                 </p>
                             </div>
                         </div>
 
-                        <div className="mt-4 rounded-2xl bg-[var(--tk-page-alt)] p-4">
-                            <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Diagnosis ICD-10</p>
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                                <span className="bg-tk-deep text-tk-mint rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold">
-                                    {data.hasil.icd10Kode}
-                                </span>
-                                <p className="text-sm font-bold">{data.hasil.icd10Nama}</p>
-                            </div>
-                        </div>
+                        {hasil ? (
+                            <>
+                                <div className="mt-4 rounded-2xl bg-[var(--tk-page-alt)] p-4">
+                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Diagnosis ICD-10</p>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <span className="bg-tk-deep text-tk-mint rounded-lg px-2.5 py-1 font-mono text-[11px] font-bold">
+                                            {hasil.icd10Kode}
+                                        </span>
+                                        <p className="text-sm font-bold">{hasil.icd10Nama}</p>
+                                    </div>
+                                </div>
 
-                        <div className="mt-4">
-                            <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Saran dokter</p>
-                            <p className="mt-1.5 text-[11px] leading-relaxed">{data.hasil.saran}</p>
-                        </div>
+                                <div className="mt-4">
+                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Saran dokter</p>
+                                    <p className="mt-1.5 text-[11px] leading-relaxed">{hasil.saran}</p>
+                                </div>
 
-                        <KeputusanRujukBanner
-                            keputusanRujuk={data.hasil.keputusanRujuk}
-                            alasanRujuk={data.hasil.alasanRujuk}
-                            biayaRujukan={data.hasil.biayaRujukan}
-                            konteks="pasien"
-                            className="mt-4"
-                        />
+                                <KeputusanRujukBanner
+                                    keputusanRujuk={hasil.keputusanRujuk}
+                                    alasanRujuk={hasil.alasanRujuk}
+                                    biayaRujukan={hasil.biayaRujukan}
+                                    konteks="pasien"
+                                    className="mt-4"
+                                />
 
-                        {!data.hasil.keputusanRujuk && (
-                            <ResepObatCard resep={data.hasil.resep} judul="Obat dari puskesmas" selaluTampil className="mt-4" />
+                                {!hasil.keputusanRujuk && (
+                                    <ResepObatCard resep={resepTersimpan} judul="Obat dari puskesmas" selaluTampil className="mt-4" />
+                                )}
+
+                                <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] p-3.5">
+                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">
+                                        Tindak lanjut puskesmas
+                                    </p>
+                                    <p className="mt-1 text-[11px] leading-relaxed">{hasil.tindakLanjut}</p>
+                                </div>
+                            </>
+                        ) : (
+                            <p className="mt-4 rounded-2xl bg-[var(--tk-page-alt)] p-4 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                Hasil konsultasi belum diisi. Setelah dokter spesialis menyelesaikan konsultasi, diagnosis ICD-10, saran, dan
+                                keputusan rujuk akan tampil di sini.
+                            </p>
                         )}
-
-                        <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] p-3.5">
-                            <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Tindak lanjut puskesmas</p>
-                            <p className="mt-1 text-[11px] leading-relaxed">{data.hasil.tindakLanjut}</p>
-                        </div>
                     </section>
 
                     <section aria-labelledby="ruang-konsultasi" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
@@ -694,10 +765,14 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
                                 <dd
                                     className={cn(
                                         'text-right font-semibold',
-                                        data.hasil.keputusanRujuk ? 'text-tk-warning' : 'text-tk-green-500 dark:text-tk-accent',
+                                        hasil === null
+                                            ? 'text-[var(--tk-muted)]'
+                                            : hasil.keputusanRujuk
+                                              ? 'text-tk-warning'
+                                              : 'text-tk-green-500 dark:text-tk-accent',
                                     )}
                                 >
-                                    {data.hasil.keputusanRujuk ? 'Dirujuk' : 'Tidak dirujuk'}
+                                    {hasil === null ? 'Menunggu hasil' : hasil.keputusanRujuk ? 'Dirujuk' : 'Tidak dirujuk'}
                                 </dd>
                             </div>
                             <div className="flex items-start justify-between gap-3">
@@ -720,20 +795,30 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
                             <span
                                 className={cn(
                                     'grid size-9 shrink-0 place-items-center rounded-full',
-                                    data.hasil.keputusanRujuk
-                                        ? 'bg-tk-warning/15 text-tk-warning'
-                                        : 'text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12]',
+                                    hasil === null
+                                        ? 'bg-[var(--tk-page-alt)] text-[var(--tk-muted)]'
+                                        : hasil.keputusanRujuk
+                                          ? 'bg-tk-warning/15 text-tk-warning'
+                                          : 'text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12]',
                                 )}
                             >
-                                {data.hasil.keputusanRujuk ? (
+                                {hasil === null ? (
+                                    <Clock className="size-4" aria-hidden="true" />
+                                ) : hasil.keputusanRujuk ? (
                                     <MapPin className="size-4" aria-hidden="true" />
                                 ) : (
                                     <Stethoscope className="size-4" aria-hidden="true" />
                                 )}
                             </span>
                             <div>
-                                <p className="text-[11px] font-bold">{data.hasil.keputusanRujuk ? 'Rujukan tercatat' : 'Tetap di puskesmas'}</p>
-                                <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">{data.hasil.tindakLanjut}</p>
+                                <p className="text-[11px] font-bold">
+                                    {hasil === null ? 'Menunggu tindak lanjut' : hasil.keputusanRujuk ? 'Rujukan tercatat' : 'Tetap di puskesmas'}
+                                </p>
+                                <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                    {hasil === null
+                                        ? 'Tindak lanjut akan muncul setelah dokter spesialis mengisi hasil konsultasi.'
+                                        : hasil.tindakLanjut}
+                                </p>
                             </div>
                         </div>
                     </section>
@@ -757,7 +842,9 @@ export default function KonsultasiDetail({ konsultasiId }: KonsultasiDetailProps
                         <div>
                             <p className="text-[11px] font-bold">Waktu konsultasi</p>
                             <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                Sesi berlangsung sekitar 35 menit. Hasil dicatat pada {data.hasil.waktu}.
+                                {hasil
+                                    ? `Sesi berlangsung sekitar 35 menit. Hasil dicatat pada ${hasil.waktu}.`
+                                    : 'Waktu pencatatan hasil akan muncul setelah dokter menyelesaikan konsultasi.'}
                             </p>
                         </div>
                     </section>

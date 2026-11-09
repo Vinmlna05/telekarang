@@ -17,12 +17,13 @@ import { useEffect, useState, type FormEvent } from 'react';
 
 import InputError from '@/components/input-error';
 import { Checkbox } from '@/components/ui/checkbox';
-import { jadwalDokter, spesialisasiFilters, type Spesialisasi, type StatusJadwal } from '@/data/jadwal-dokter';
+import { spesialisasiFilters, type DokterSpesialis, type Spesialisasi, type StatusJadwal } from '@/data/jadwal-dokter';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { cn } from '@/lib/utils';
 import { type SharedData } from '@/types';
 
 interface KonsultasiBaruProps {
+    dokter: DokterSpesialis[];
     dokterAwal: number | null;
     jadwalAwal: string;
 }
@@ -84,9 +85,9 @@ function StepHeading({ step, title, description }: { step: number; title: string
     );
 }
 
-export default function KonsultasiBaru({ dokterAwal, jadwalAwal }: KonsultasiBaruProps) {
+export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: KonsultasiBaruProps) {
     const { auth } = usePage<SharedData>().props;
-    const dokterAwalData = jadwalDokter.find((dokter) => dokter.id === dokterAwal && dokter.status === 'tersedia' && dokter.slots.length > 0) ?? null;
+    const dokterAwalData = dokter.find((item) => item.id === dokterAwal && item.status === 'tersedia' && item.slots.length > 0) ?? null;
 
     const [filterSpesialisasi, setFilterSpesialisasi] = useState<Spesialisasi | 'Semua'>('Semua');
     const [dokterId, setDokterId] = useState<number | null>(dokterAwalData?.id ?? null);
@@ -103,9 +104,8 @@ export default function KonsultasiBaru({ dokterAwal, jadwalAwal }: KonsultasiBar
     const [errors, setErrors] = useState<FormErrors>({});
     const [berhasil, setBerhasil] = useState(false);
 
-    const dokterTerpilih = dokterId ? (jadwalDokter.find((dokter) => dokter.id === dokterId) ?? null) : null;
-    const dokterTersaring =
-        filterSpesialisasi === 'Semua' ? jadwalDokter : jadwalDokter.filter((dokter) => dokter.spesialisasi === filterSpesialisasi);
+    const dokterTerpilih = dokterId ? (dokter.find((item) => item.id === dokterId) ?? null) : null;
+    const dokterTersaring = filterSpesialisasi === 'Semua' ? dokter : dokter.filter((item) => item.spesialisasi === filterSpesialisasi);
     const jumlahDokterTersedia = dokterTersaring.filter((dokter) => dokter.status === 'tersedia').length;
     const namaPasien = auth.user.name;
 
@@ -126,14 +126,14 @@ export default function KonsultasiBaru({ dokterAwal, jadwalAwal }: KonsultasiBar
     }
 
     function pilihDokter(id: number) {
-        const dokter = jadwalDokter.find((item) => item.id === id);
+        const dipilih = dokter.find((item) => item.id === id);
 
-        if (!dokter || dokter.status !== 'tersedia' || dokter.slots.length === 0) {
+        if (!dipilih || dipilih.status !== 'tersedia' || dipilih.slots.length === 0) {
             return;
         }
 
-        setDokterId(dokter.id);
-        setSlot(dokter.slots[0]);
+        setDokterId(dipilih.id);
+        setSlot(dipilih.slots[0]);
         setErrors((previous) => ({ ...previous, dokter: undefined, slot: undefined }));
     }
 

@@ -20,7 +20,6 @@ import {
     type LucideIcon,
 } from 'lucide-react';
 
-import { konsultasiPasien } from '@/data/konsultasi-pasien';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { cn } from '@/lib/utils';
 import { type SharedData } from '@/types';
@@ -28,72 +27,54 @@ import { type SharedData } from '@/types';
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
 const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77F_100%)]';
 
-const profilPasien = {
-    nomorRekamMedis: 'RM-2026-0018',
-    nik: '9271 •••• •••• 42',
-    tanggalLahir: '14 Februari 1989',
-    usia: 37,
-    jenisKelamin: 'laki-laki',
-    telepon: '+62 812-0000-1234',
-    alamat: 'Dusun Karang Indah, Pulau Karang, Kabupaten Kepulauan',
-    golonganDarah: 'O+',
-    alergi: 'Tidak ada',
-    kondisiKronis: 'Hipertensi esensial',
-    obatRutin: 'Amlodipine 5 mg',
-    kontakDarurat: {
-        nama: 'Rahmat Hidayat',
-        hubungan: 'teman',
-        telepon: '+62 812-0000-5678',
-        teleponHref: 'tel:+6281200005678',
-    },
-    skriningTerakhir: {
-        tanggal: '21 September 2026',
-        beratBadan: 68,
-        tinggiBadan: 164,
-        tekananDarah: '150/95',
-        spo2: 98,
-    },
-};
+interface KontakDarurat {
+    nama: string;
+    hubungan: string;
+    telepon: string;
+    teleponHref: string;
+}
 
-const identitasPasien = [
-    { label: 'NIK', value: profilPasien.nik },
-    { label: 'Tanggal lahir', value: profilPasien.tanggalLahir },
-    { label: 'Jenis kelamin', value: profilPasien.jenisKelamin },
-    { label: 'Nomor rekam medis', value: profilPasien.nomorRekamMedis },
-    { label: 'Nomor telepon', value: profilPasien.telepon },
-    { label: 'Alamat', value: profilPasien.alamat, lebar: true },
-];
+interface SkriningTerakhir {
+    tanggal: string;
+    beratBadan: number;
+    tinggiBadan: number;
+    tekananDarah: string;
+    spo2: number;
+}
 
-const ringkasanKesehatan: Array<{ label: string; value: string; catatan: string; icon: LucideIcon; tone: string }> = [
-    {
-        label: 'Golongan darah',
-        value: profilPasien.golonganDarah,
-        catatan: 'Tercatat di rekam medis',
-        icon: Droplet,
-        tone: 'text-tk-danger bg-tk-danger/10',
-    },
-    {
-        label: 'Alergi',
-        value: profilPasien.alergi,
-        catatan: 'Alergi obat yang diketahui',
-        icon: ShieldCheck,
-        tone: 'text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12]',
-    },
-    {
-        label: 'Kondisi kronis',
-        value: profilPasien.kondisiKronis,
-        catatan: 'Perlu dipantau saat skrining',
-        icon: HeartPulse,
-        tone: 'text-tk-warning bg-tk-warning/15',
-    },
-    {
-        label: 'Obat rutin',
-        value: profilPasien.obatRutin,
-        catatan: 'Diminum setiap pagi',
-        icon: Pill,
-        tone: 'text-tk-info bg-tk-info/10',
-    },
-];
+interface ProfilData {
+    nama: string;
+    nomorRekamMedis: string | null;
+    nik: string | null;
+    tanggalLahir: string | null;
+    usia: number | null;
+    jenisKelamin: string | null;
+    alamat: string | null;
+    telepon: string | null;
+    golonganDarah: string | null;
+    alergi: string | null;
+    obatRutin: string | null;
+    diagnosisTerakhir: string | null;
+    kontakDarurat: KontakDarurat | null;
+    terdaftarSejak: string;
+    skriningTerakhir: SkriningTerakhir | null;
+    statusVerifikasi: 'TERVERIFIKASI' | 'MENUNGGU_VERIFIKASI';
+}
+
+interface ProfilPasienProps {
+    profil: ProfilData;
+    ringkasan: {
+        totalKonsultasi: number;
+        rujukanTerhindarkan: number;
+        dirujuk: number;
+    };
+    konsultasiTerakhir: {
+        id: number;
+        tanggalSingkat: string;
+        dokter: string;
+        diagnosisNama: string;
+    } | null;
+}
 
 const aksiCepat = [
     {
@@ -127,20 +108,6 @@ function inisial(nama: string): string {
     );
 }
 
-function formatTanggal(value: string): string {
-    const tanggal = new Date(value);
-
-    if (Number.isNaN(tanggal.getTime())) {
-        return value;
-    }
-
-    return tanggal.toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-    });
-}
-
 function SectionHeader({ icon: Icon, title, description, badge }: { icon: LucideIcon; title: string; description: string; badge?: string }) {
     return (
         <div className="flex items-start justify-between gap-3">
@@ -162,14 +129,62 @@ function SectionHeader({ icon: Icon, title, description, badge }: { icon: Lucide
     );
 }
 
-export default function ProfilPasien() {
+export default function ProfilPasien({ profil, ringkasan, konsultasiTerakhir }: ProfilPasienProps) {
     const { auth } = usePage<SharedData>().props;
     const emailTerverifikasi = auth.user.email_verified_at !== null;
 
-    const totalKonsultasi = konsultasiPasien.length;
-    const rujukanTerhindarkan = konsultasiPasien.filter((item) => !item.hasil.keputusanRujuk).length;
-    const rujukan = totalKonsultasi - rujukanTerhindarkan;
-    const konsultasiTerakhir = konsultasiPasien[0];
+    const identitasPasien = [
+        { label: 'NIK', value: profil.nik ?? 'Belum tercatat' },
+        { label: 'Tanggal lahir', value: profil.tanggalLahir ?? 'Belum tercatat' },
+        { label: 'Jenis kelamin', value: profil.jenisKelamin ?? 'Belum tercatat' },
+        { label: 'Nomor rekam medis', value: profil.nomorRekamMedis ?? 'Menunggu verifikasi petugas' },
+        { label: 'Nomor telepon', value: profil.telepon ?? 'Belum tercatat' },
+        { label: 'Alamat', value: profil.alamat ?? 'Belum tercatat', lebar: true },
+    ];
+
+    const fieldTerisi = [
+        profil.nik,
+        profil.tanggalLahir,
+        profil.jenisKelamin,
+        profil.alamat,
+        profil.telepon,
+        profil.golonganDarah,
+        profil.alergi,
+        profil.obatRutin,
+        profil.kontakDarurat,
+    ].filter(Boolean).length;
+    const persenKelengkapan = Math.round((fieldTerisi / 9) * 100);
+
+    const ringkasanKesehatan: Array<{ label: string; value: string; catatan: string; icon: LucideIcon; tone: string }> = [
+        {
+            label: 'Golongan darah',
+            value: profil.golonganDarah ?? 'Belum tercatat',
+            catatan: profil.golonganDarah ? 'Tercatat di profil Anda' : 'Dapat dilengkapi dari halaman akun',
+            icon: Droplet,
+            tone: 'text-tk-danger bg-tk-danger/10',
+        },
+        {
+            label: 'Alergi',
+            value: profil.alergi ?? 'Belum tercatat',
+            catatan: profil.alergi ? 'Alergi obat yang diketahui' : 'Dapat dilengkapi dari halaman akun',
+            icon: ShieldCheck,
+            tone: 'text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12]',
+        },
+        {
+            label: 'Diagnosis terakhir',
+            value: profil.diagnosisTerakhir ?? 'Belum tercatat',
+            catatan: profil.diagnosisTerakhir ? 'Dari konsultasi terakhir' : 'Belum ada hasil konsultasi',
+            icon: HeartPulse,
+            tone: 'text-tk-warning bg-tk-warning/15',
+        },
+        {
+            label: 'Obat rutin',
+            value: profil.obatRutin ?? 'Belum tercatat',
+            catatan: profil.obatRutin ? 'Diminum setiap hari' : 'Dapat dilengkapi dari halaman akun',
+            icon: Pill,
+            tone: 'text-tk-info bg-tk-info/10',
+        },
+    ];
 
     return (
         <PasienAppLayout
@@ -194,23 +209,23 @@ export default function ProfilPasien() {
                             <div className="relative flex items-center justify-between gap-3">
                                 <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                                     <span className="text-tk-mint grid size-16 shrink-0 place-items-center rounded-[22px] border-4 border-white/10 bg-[linear-gradient(135deg,#0F4A40_0%,#2E8B6A_55%,#9FE3B5_100%)] text-lg font-extrabold shadow-[0_10px_30px_rgba(4,16,14,0.18)] sm:size-20">
-                                        {inisial(auth.user.name)}
+                                        {inisial(profil.nama)}
                                     </span>
                                     <div className="min-w-0">
                                         <h2
                                             id="profil-utama"
                                             className="truncate text-xl font-extrabold tracking-[-0.03em] text-white sm:text-[2rem]"
                                         >
-                                            {auth.user.name}
+                                            {profil.nama}
                                         </h2>
                                         <p className="mt-1 text-[10px] text-white/80 sm:text-[12px]">
-                                            {profilPasien.nomorRekamMedis} · Terdaftar sejak {formatTanggal(auth.user.created_at)}
+                                            {profil.nomorRekamMedis ?? 'Menunggu verifikasi petugas'} · Terdaftar sejak {profil.terdaftarSejak}
                                         </p>
                                     </div>
                                 </div>
 
                                 <Link
-                                    href="/pasien/akun"
+                                    href="/pasien/akun#data-profil"
                                     className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-white/30 bg-white/10 px-4 py-2 text-[10px] font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/15"
                                 >
                                     <UserRound className="size-3.5" aria-hidden="true" />
@@ -223,21 +238,21 @@ export default function ProfilPasien() {
                         <div className="grid gap-2 px-4 pt-4 pb-4 sm:grid-cols-2 md:grid-cols-4 md:px-5 md:pb-5">
                             <div className="rounded-[18px] bg-[var(--tk-page-alt)] p-3">
                                 <dt className="text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">Usia</dt>
-                                <dd className="mt-1 text-[22px] font-bold tracking-[-0.03em] text-[var(--tk-text)]">{profilPasien.usia}</dd>
+                                <dd className="mt-1 text-[22px] font-bold tracking-[-0.03em] text-[var(--tk-text)]">{profil.usia ?? '-'}</dd>
                                 <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">tahun</p>
                             </div>
                             <div className="rounded-[18px] bg-[var(--tk-page-alt)] p-3">
                                 <dt className="text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">Gender</dt>
-                                <dd className="mt-1 text-[18px] font-bold tracking-[-0.02em] text-[var(--tk-text)]">{profilPasien.jenisKelamin}</dd>
+                                <dd className="mt-1 text-[18px] font-bold tracking-[-0.02em] text-[var(--tk-text)]">{profil.jenisKelamin ?? '-'}</dd>
                             </div>
                             <div className="rounded-[18px] bg-[var(--tk-page-alt)] p-3">
                                 <dt className="text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">Gol. darah</dt>
-                                <dd className="mt-1 text-[18px] font-bold tracking-[-0.02em] text-[var(--tk-text)]">{profilPasien.golonganDarah}</dd>
+                                <dd className="mt-1 text-[18px] font-bold tracking-[-0.02em] text-[var(--tk-text)]">{profil.golonganDarah ?? '-'}</dd>
                             </div>
                             <div className="rounded-[18px] bg-[var(--tk-page-alt)] p-3">
                                 <dt className="text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">Kontak</dt>
                                 <dd className="mt-1 truncate text-[15px] font-bold tracking-[-0.02em] text-[var(--tk-text)]">
-                                    {profilPasien.telepon}
+                                    {profil.telepon ?? 'Belum tercatat'}
                                 </dd>
                             </div>
                         </div>
@@ -248,7 +263,7 @@ export default function ProfilPasien() {
                             icon={IdCard}
                             title="Identitas pasien"
                             description="Data ini digunakan perawat untuk memverifikasi pasien saat skrining."
-                            badge="Diverifikasi puskesmas"
+                            badge={profil.statusVerifikasi === 'TERVERIFIKASI' ? 'Terverifikasi puskesmas' : 'Menunggu verifikasi'}
                         />
 
                         <dl className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -262,7 +277,8 @@ export default function ProfilPasien() {
 
                         <p className="mt-3 flex items-start gap-1.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
                             <Lock className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                            Perubahan nama, NIK, tanggal lahir, dan alamat dilakukan petugas puskesmas agar sesuai rekam medis.
+                            Nama dan nomor rekam medis dibuat sistem. Lengkapi NIK, tanggal lahir, dan data lainnya melalui halaman akun; petugas
+                            puskesmas akan memverifikasinya.
                         </p>
                     </section>
 
@@ -296,37 +312,43 @@ export default function ProfilPasien() {
                         <div className="mt-3 rounded-2xl bg-[var(--tk-page-alt)] p-4">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <p className="text-[10px] font-bold">Skrining terakhir</p>
-                                <span className="text-[9px] text-[var(--tk-muted)]">{profilPasien.skriningTerakhir.tanggal}</span>
+                                <span className="text-[9px] text-[var(--tk-muted)]">{profil.skriningTerakhir?.tanggal ?? 'Belum ada data'}</span>
                             </div>
-                            <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                <div>
-                                    <dt className="text-[9px] text-[var(--tk-muted)]">Berat</dt>
-                                    <dd className="mt-0.5 text-xs font-bold">
-                                        {profilPasien.skriningTerakhir.beratBadan}{' '}
-                                        <span className="text-[9px] font-medium text-[var(--tk-muted)]">kg</span>
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt className="text-[9px] text-[var(--tk-muted)]">Tinggi</dt>
-                                    <dd className="mt-0.5 text-xs font-bold">
-                                        {profilPasien.skriningTerakhir.tinggiBadan}{' '}
-                                        <span className="text-[9px] font-medium text-[var(--tk-muted)]">cm</span>
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt className="text-[9px] text-[var(--tk-muted)]">Tekanan darah</dt>
-                                    <dd className="mt-0.5 text-xs font-bold">
-                                        {profilPasien.skriningTerakhir.tekananDarah}{' '}
-                                        <span className="text-[9px] font-medium text-[var(--tk-muted)]">mmHg</span>
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt className="text-[9px] text-[var(--tk-muted)]">SpO₂</dt>
-                                    <dd className="mt-0.5 text-xs font-bold">
-                                        {profilPasien.skriningTerakhir.spo2} <span className="text-[9px] font-medium text-[var(--tk-muted)]">%</span>
-                                    </dd>
-                                </div>
-                            </dl>
+                            {profil.skriningTerakhir ? (
+                                <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                    <div>
+                                        <dt className="text-[9px] text-[var(--tk-muted)]">Berat</dt>
+                                        <dd className="mt-0.5 text-xs font-bold">
+                                            {profil.skriningTerakhir.beratBadan}{' '}
+                                            <span className="text-[9px] font-medium text-[var(--tk-muted)]">kg</span>
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-[9px] text-[var(--tk-muted)]">Tinggi</dt>
+                                        <dd className="mt-0.5 text-xs font-bold">
+                                            {profil.skriningTerakhir.tinggiBadan}{' '}
+                                            <span className="text-[9px] font-medium text-[var(--tk-muted)]">cm</span>
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-[9px] text-[var(--tk-muted)]">Tekanan darah</dt>
+                                        <dd className="mt-0.5 text-xs font-bold">
+                                            {profil.skriningTerakhir.tekananDarah}{' '}
+                                            <span className="text-[9px] font-medium text-[var(--tk-muted)]">mmHg</span>
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-[9px] text-[var(--tk-muted)]">SpO₂</dt>
+                                        <dd className="mt-0.5 text-xs font-bold">
+                                            {profil.skriningTerakhir.spo2} <span className="text-[9px] font-medium text-[var(--tk-muted)]">%</span>
+                                        </dd>
+                                    </div>
+                                </dl>
+                            ) : (
+                                <p className="mt-2 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                    Belum ada data skrining. Data akan tampil setelah perawat menyelesaikan skrining pertama.
+                                </p>
+                            )}
                         </div>
                     </section>
 
@@ -338,27 +360,33 @@ export default function ProfilPasien() {
                             badge="Wajib diperbarui"
                         />
 
-                        <div className="mt-4 flex flex-col gap-3 rounded-2xl bg-[var(--tk-page-alt)] p-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex items-center gap-3">
-                                <span className="text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12] grid size-10 shrink-0 place-items-center rounded-full text-[11px] font-extrabold">
-                                    {inisial(profilPasien.kontakDarurat.nama)}
-                                </span>
-                                <div>
-                                    <p className="text-[11px] font-bold">{profilPasien.kontakDarurat.nama}</p>
-                                    <p className="text-[10px] text-[var(--tk-muted)]">
-                                        {profilPasien.kontakDarurat.hubungan} · {profilPasien.kontakDarurat.telepon}
-                                    </p>
+                        {profil.kontakDarurat ? (
+                            <div className="mt-4 flex flex-col gap-3 rounded-2xl bg-[var(--tk-page-alt)] p-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12] grid size-10 shrink-0 place-items-center rounded-full text-[11px] font-extrabold">
+                                        {inisial(profil.kontakDarurat.nama)}
+                                    </span>
+                                    <div>
+                                        <p className="text-[11px] font-bold">{profil.kontakDarurat.nama}</p>
+                                        <p className="text-[10px] text-[var(--tk-muted)]">
+                                            {profil.kontakDarurat.hubungan} · {profil.kontakDarurat.telepon}
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <a
-                                href={profilPasien.kontakDarurat.teleponHref}
-                                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-[var(--tk-glass)] px-4 text-[10px] font-bold text-[var(--tk-text)] transition-colors hover:bg-[var(--tk-page-alt)]"
-                            >
-                                <Phone className="size-3.5" aria-hidden="true" />
-                                Hubungi
-                            </a>
-                        </div>
+                                <a
+                                    href={profil.kontakDarurat.teleponHref}
+                                    className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-[var(--tk-glass)] px-4 text-[10px] font-bold text-[var(--tk-text)] transition-colors hover:bg-[var(--tk-page-alt)]"
+                                >
+                                    <Phone className="size-3.5" aria-hidden="true" />
+                                    Hubungi
+                                </a>
+                            </div>
+                        ) : (
+                            <p className="mt-4 rounded-2xl bg-[var(--tk-page-alt)] p-4 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                Belum ada kontak darurat yang tercatat. Petugas puskesmas dapat menambahkannya saat kunjungan berikutnya.
+                            </p>
+                        )}
 
                         <p className="mt-3 flex items-start gap-1.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
                             <MapPin className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
@@ -433,27 +461,33 @@ export default function ProfilPasien() {
                                 Aktivitas konsultasi
                             </h2>
                             <span className="text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12] rounded-full px-2.5 py-1 text-[9px] font-bold">
-                                {totalKonsultasi} selesai
+                                {ringkasan.totalKonsultasi} selesai
                             </span>
                         </div>
 
                         <div className="mt-4 grid grid-cols-2 gap-2">
                             <div className="rounded-2xl bg-[var(--tk-page-alt)] p-3">
                                 <p className="text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">Terhindarkan</p>
-                                <p className="text-tk-green-500 dark:text-tk-accent mt-1 text-xl font-semibold">{rujukanTerhindarkan}</p>
+                                <p className="text-tk-green-500 dark:text-tk-accent mt-1 text-xl font-semibold">{ringkasan.rujukanTerhindarkan}</p>
                             </div>
                             <div className="rounded-2xl bg-[var(--tk-page-alt)] p-3">
                                 <p className="text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">Dirujuk</p>
-                                <p className="text-tk-warning mt-1 text-xl font-semibold">{rujukan}</p>
+                                <p className="text-tk-warning mt-1 text-xl font-semibold">{ringkasan.dirujuk}</p>
                             </div>
                         </div>
 
                         <div className="mt-3 rounded-2xl border border-[var(--tk-glass-border)] p-3">
                             <p className="text-[9px] font-semibold tracking-[0.08em] text-[var(--tk-muted)] uppercase">Konsultasi terakhir</p>
-                            <p className="mt-1 text-[11px] font-bold">{konsultasiTerakhir.hasil.icd10Nama}</p>
-                            <p className="mt-0.5 text-[9px] text-[var(--tk-muted)]">
-                                {konsultasiTerakhir.tanggalSingkat} · {konsultasiTerakhir.dokter}
-                            </p>
+                            {konsultasiTerakhir ? (
+                                <>
+                                    <p className="mt-1 text-[11px] font-bold">{konsultasiTerakhir.diagnosisNama}</p>
+                                    <p className="mt-0.5 text-[9px] text-[var(--tk-muted)]">
+                                        {konsultasiTerakhir.tanggalSingkat} · {konsultasiTerakhir.dokter}
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="mt-1 text-[10px] text-[var(--tk-muted)]">Belum ada konsultasi selesai.</p>
+                            )}
                         </div>
 
                         <Link
@@ -470,15 +504,19 @@ export default function ProfilPasien() {
                             <h2 id="kelengkapan-profil" className="text-[15px] font-bold">
                                 Kelengkapan profil
                             </h2>
-                            <span className="text-tk-green-500 dark:text-tk-accent text-[10px] font-bold">Lengkap</span>
+                            <span className="text-tk-green-500 dark:text-tk-accent text-[10px] font-bold">
+                                {persenKelengkapan >= 100 ? 'Lengkap' : `${persenKelengkapan}%`}
+                            </span>
                         </div>
 
                         <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--tk-page-alt)]">
-                            <div className="bg-tk-green-500 dark:bg-tk-accent h-full w-full rounded-full" />
+                            <div className="bg-tk-green-500 dark:bg-tk-accent h-full rounded-full" style={{ width: `${persenKelengkapan}%` }} />
                         </div>
 
                         <p className="mt-3 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                            Identitas, kontak darurat, dan ringkasan kesehatan sudah tersedia untuk mendukung skrining.
+                            {persenKelengkapan >= 100
+                                ? 'Identitas dan data profil sudah tersedia untuk mendukung skrining.'
+                                : 'Lengkapi data yang belum tercatat melalui petugas puskesmas saat kunjungan berikutnya.'}
                         </p>
                     </section>
 

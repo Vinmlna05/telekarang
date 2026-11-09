@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
+import { spesialisasiFilters, type DokterSpesialis, type StatusJadwal } from '@/data/jadwal-dokter';
 import { useNotifikasi } from '@/hooks/use-notifikasi';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { cn } from '@/lib/utils';
@@ -36,7 +37,7 @@ interface Dokter {
     spesialisasi: string;
     slot: string;
     faskes: string;
-    status: 'tersedia' | 'terisi' | 'libur';
+    status: StatusJadwal;
 }
 
 interface RiwayatItem {
@@ -54,7 +55,7 @@ interface BerandaPasienProps {
         totalKonsultasi: number;
         rujukanTerhindarkan: number;
     };
-    dokter: Dokter[];
+    dokter: DokterSpesialis[];
     riwayat: RiwayatItem[];
 }
 
@@ -69,11 +70,18 @@ const statusMeta: Record<StatusKonsultasi, { label: string; step: number; tone: 
 
 const langkahKonsultasi = ['Skrining', 'Review dokter', 'Spesialis', 'Hasil'];
 
+const pesanStatus: Record<StatusKonsultasi, string> = {
+    MENUNGGU_SKRINING: 'Datang ke puskesmas untuk skrining agar permintaan dapat diteruskan ke dokter spesialis.',
+    SKRINING_SELESAI: 'Skrining sudah lengkap. Menunggu review dokter umum sebelum diteruskan ke spesialis.',
+    MENUNGGU_SPESIALIS: 'Permintaan sudah diteruskan. Menunggu konfirmasi atau penjadwalan ulang dari dokter spesialis.',
+    DIKONFIRMASI: 'Dokter spesialis sudah mengonfirmasi jadwal. Buka detail untuk melihat mode konsultasi Anda.',
+    BERLANGSUNG: 'Konsultasi sedang berlangsung. Buka detail untuk melanjutkan percakapan atau panggilan video.',
+    SELESAI: 'Konsultasi selesai. Hasil dan saran dokter dapat dilihat pada detail konsultasi.',
+};
+
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
 const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77F_100%)]';
 const accentChip = 'bg-tk-accent text-tk-deep';
-
-const spesialisasiFilters = ['Semua', 'Anak', 'Penyakit Dalam', 'Kulit', 'Kandungan'];
 
 const quickActions = [
     { label: 'Buat Konsultasi', href: '/pasien/konsultasi/baru', icon: Plus },
@@ -100,7 +108,18 @@ export default function BerandaPasien({ konsultasiAktif, ringkasan, dokter, riwa
     const [showMore, setShowMore] = useState(false);
     const { belumDibaca } = useNotifikasi('pasien');
 
-    const dokterTersaring = filter === 'Semua' ? dokter : dokter.filter((item) => item.spesialisasi === filter);
+    const daftarDokter: Dokter[] = dokter
+        .filter((item) => item.status === 'tersedia')
+        .map((item) => ({
+            id: item.id,
+            nama: item.nama,
+            spesialisasi: item.spesialisasi,
+            slot: `${item.hariTerdekat}, ${item.slotTerdekat}`,
+            faskes: item.faskes,
+            status: item.status,
+        }));
+
+    const dokterTersaring = filter === 'Semua' ? daftarDokter : daftarDokter.filter((item) => item.spesialisasi === filter);
     const status = konsultasiAktif ? statusMeta[konsultasiAktif.status] : null;
 
     return (
@@ -177,7 +196,7 @@ export default function BerandaPasien({ konsultasiAktif, ringkasan, dokter, riwa
                                                 className="text-tk-green-500 dark:text-tk-accent mt-0.5 size-4 shrink-0"
                                                 aria-hidden="true"
                                             />
-                                            Datang ke puskesmas untuk skrining agar permintaan dapat diteruskan ke dokter spesialis.
+                                            {pesanStatus[konsultasiAktif.status]}
                                         </p>
                                     </div>
 

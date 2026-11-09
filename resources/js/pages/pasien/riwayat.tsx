@@ -16,11 +16,31 @@ import {
 import { useState } from 'react';
 
 import { Input } from '@/components/ui/input';
-import { modeKonsultasiLabels, semuaKonsultasiPasien, statusKonsultasiLabels } from '@/data/konsultasi-pasien';
+import { modeKonsultasiLabels, statusKonsultasiLabels, type ModeKonsultasi, type StatusKonsultasi } from '@/data/konsultasi-pasien';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { cn } from '@/lib/utils';
 
 type FilterHasil = 'semua' | 'terhindarkan' | 'rujukan';
+
+interface RiwayatItem {
+    id: number;
+    dokter: string;
+    spesialisasi: string;
+    faskes: string;
+    tanggalSingkat: string;
+    mode: ModeKonsultasi;
+    status: StatusKonsultasi;
+    keluhan: string;
+    hasil: {
+        icd10Kode: string;
+        icd10Nama: string;
+        keputusanRujuk: boolean;
+    };
+}
+
+interface RiwayatKonsultasiProps {
+    riwayat: RiwayatItem[];
+}
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
 const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77F_100%)]';
@@ -43,11 +63,11 @@ function inisial(nama: string): string {
     );
 }
 
-export default function RiwayatKonsultasi() {
+export default function RiwayatKonsultasi({ riwayat }: RiwayatKonsultasiProps) {
     const [q, setQ] = useState('');
     const [filter, setFilter] = useState<FilterHasil>('semua');
 
-    const daftarKonsultasi = semuaKonsultasiPasien();
+    const daftarKonsultasi = riwayat;
     const total = daftarKonsultasi.length;
     const terhindarkan = daftarKonsultasi.filter((item) => !item.hasil.keputusanRujuk).length;
     const dirujuk = total - terhindarkan;

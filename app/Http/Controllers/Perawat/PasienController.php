@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Perawat;
 
 use App\Http\Controllers\Controller;
+use App\Models\Pasien;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -175,6 +176,22 @@ class PasienController extends Controller
 
         $koleksi = collect($pasien);
 
+        $menungguVerifikasi = Pasien::query()
+            ->with('user')
+            ->where('status_verifikasi', 'MENUNGGU_VERIFIKASI')
+            ->latest()
+            ->get()
+            ->map(fn (Pasien $item): array => [
+                'id' => $item->id,
+                'nama' => $item->nama,
+                'nik' => $item->nik,
+                'telepon' => $item->telepon,
+                'alamat' => $item->alamat,
+                'email' => $item->user?->email,
+                'terdaftarPada' => $item->created_at->format('d/m/Y'),
+            ])
+            ->values();
+
         return Inertia::render('perawat/pasien', [
             'pasien' => $pasien,
             'ringkasan' => [
@@ -183,6 +200,7 @@ class PasienController extends Controller
                 'tanpaAkun' => $koleksi->where('punyaAkun', false)->count(),
                 'kunjunganBulanIni' => 7,
             ],
+            'menungguVerifikasi' => $menungguVerifikasi,
         ]);
     }
 }

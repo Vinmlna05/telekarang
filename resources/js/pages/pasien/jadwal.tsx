@@ -3,9 +3,13 @@ import { CalendarDays, CheckCircle2, ChevronRight, Clock, Info, MapPin, RotateCc
 import { useState } from 'react';
 
 import { Input } from '@/components/ui/input';
-import { jadwalDokter, spesialisasiFilters, urutanHari, type Spesialisasi, type StatusJadwal } from '@/data/jadwal-dokter';
+import { spesialisasiFilters, urutanHari, type DokterSpesialis, type Spesialisasi, type StatusJadwal } from '@/data/jadwal-dokter';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { cn } from '@/lib/utils';
+
+interface JadwalPasienProps {
+    dokter: DokterSpesialis[];
+}
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
 const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77F_100%)]';
@@ -49,12 +53,12 @@ function inisial(nama: string): string {
     );
 }
 
-export default function JadwalPasien() {
+export default function JadwalPasien({ dokter }: JadwalPasienProps) {
     const [q, setQ] = useState('');
     const [filterSpesialisasi, setFilterSpesialisasi] = useState<Spesialisasi | 'Semua'>('Semua');
     const [filterHari, setFilterHari] = useState('Semua');
 
-    const dokterTersaring = jadwalDokter.filter((dokter) => {
+    const dokterTersaring = dokter.filter((dokter) => {
         const kataKunci = q.trim().toLowerCase();
         const cocokKata =
             kataKunci === '' || [dokter.nama, dokter.spesialisasi, dokter.faskes].some((nilai) => nilai.toLowerCase().includes(kataKunci));
@@ -66,7 +70,7 @@ export default function JadwalPasien() {
 
     const jumlahSlot = dokterTersaring.reduce((total, dokter) => total + dokter.slots.length, 0);
     const filterAktif = q !== '' || filterSpesialisasi !== 'Semua' || filterHari !== 'Semua';
-    const jadwalTerdekat = jadwalDokter
+    const jadwalTerdekat = dokter
         .filter((dokter) => dokter.status === 'tersedia')
         .sort((a, b) => urutanHari.indexOf(a.hariTerdekat) - urutanHari.indexOf(b.hariTerdekat))
         .slice(0, 3);

@@ -20,7 +20,8 @@ test('nurses can view the patient directory', function () {
             ->where('ringkasan.tanpaAkun', 4)
             ->has('pasien', 10)
             ->where('pasien.0.nama', 'Siti Rahmawati')
-            ->where('pasien.2.punyaAkun', false));
+            ->where('pasien.2.punyaAkun', false)
+            ->has('menungguVerifikasi', 0));
 });
 
 test('users with other roles cannot view the patient directory', function (string $role) {

@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import {
     CalendarDays,
     CheckCircle2,
@@ -55,6 +55,16 @@ interface PasienItem {
     terdaftarPada: string;
 }
 
+interface PasienMenungguVerifikasi {
+    id: number;
+    nama: string;
+    nik: string | null;
+    telepon: string | null;
+    alamat: string | null;
+    email: string | null;
+    terdaftarPada: string;
+}
+
 interface Ringkasan {
     total: number;
     punyaAkun: number;
@@ -65,6 +75,7 @@ interface Ringkasan {
 interface PasienPerawatProps {
     pasien: PasienItem[];
     ringkasan: Ringkasan;
+    menungguVerifikasi: PasienMenungguVerifikasi[];
 }
 
 interface FormPasien {
@@ -204,7 +215,7 @@ function SectionHeader({ icon: Icon, title, description }: { icon: LucideIcon; t
     );
 }
 
-export default function PasienPerawat({ pasien, ringkasan }: PasienPerawatProps) {
+export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }: PasienPerawatProps) {
     const [daftar, setDaftar] = useState<PasienItem[]>(pasien);
     const [q, setQ] = useState('');
     const [filter, setFilter] = useState<FilterAkun>('SEMUA');
@@ -295,6 +306,17 @@ export default function PasienPerawat({ pasien, ringkasan }: PasienPerawatProps)
         setFilter('SEMUA');
     };
 
+    const verifikasiPasien = (item: PasienMenungguVerifikasi) => {
+        router.patch(
+            route('perawat.pasien.verifikasi', item.id),
+            {},
+            {
+                preserveScroll: true,
+                onSuccess: () => setBerhasil(`${item.nama} berhasil diverifikasi. Nomor rekam medis sudah dapat digunakan.`),
+            },
+        );
+    };
+
     const kartuRingkasan = [
         { label: 'Total pasien', value: ringkasanAktif.total, caption: 'terdaftar di puskesmas', icon: Users },
         { label: 'Punya akun', value: ringkasanAktif.punyaAkun, caption: 'bisa masuk mandiri', icon: UserRound },
@@ -327,6 +349,63 @@ export default function PasienPerawat({ pasien, ringkasan }: PasienPerawatProps)
                         <X className="size-3.5" aria-hidden="true" />
                     </button>
                 </div>
+            )}
+
+            {menungguVerifikasi.length > 0 && (
+                <section aria-label="Pasien menunggu verifikasi" className={cn('mb-5 rounded-[22px] p-4', glass)}>
+                    <div className="flex items-start gap-3">
+                        <span className="bg-tk-warning/15 text-tk-warning grid size-9 shrink-0 place-items-center rounded-full">
+                            <ShieldCheck className="size-4" aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                            <h2 className="text-[15px] font-bold">Menunggu verifikasi identitas</h2>
+                            <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                Pasien mendaftar mandiri. Cocokkan identitas sebelum nomor rekam medis diterbitkan.
+                            </p>
+                        </div>
+                        <span className="bg-tk-warning/15 text-tk-warning rounded-full px-3 py-1 text-[10px] font-bold">
+                            {menungguVerifikasi.length}
+                        </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                        {menungguVerifikasi.map((item) => (
+                            <article
+                                key={item.id}
+                                className="flex flex-col gap-3 rounded-[18px] border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-4 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                                <div className="min-w-0">
+                                    <p className="truncate text-[13px] font-bold">{item.nama}</p>
+                                    <p className="mt-1 text-[10px] text-[var(--tk-muted)]">
+                                        NIK {item.nik ?? 'belum diisi'} · Daftar {item.terdaftarPada}
+                                    </p>
+                                    <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-[var(--tk-muted)]">
+                                        {item.telepon && (
+                                            <span className="inline-flex items-center gap-1.5">
+                                                <Phone className="size-3" aria-hidden="true" />
+                                                {item.telepon}
+                                            </span>
+                                        )}
+                                        {item.alamat && (
+                                            <span className="inline-flex min-w-0 items-center gap-1.5">
+                                                <MapPin className="size-3 shrink-0" aria-hidden="true" />
+                                                <span className="truncate">{item.alamat}</span>
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => verifikasiPasien(item)}
+                                    className="bg-tk-green-500 hover:bg-tk-green-400 focus-visible:ring-tk-accent inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-[11px] font-bold text-white transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--tk-page-alt)]"
+                                >
+                                    <CheckCircle2 className="size-4" aria-hidden="true" />
+                                    Verifikasi
+                                </button>
+                            </article>
+                        ))}
+                    </div>
+                </section>
             )}
 
             <Dialog
