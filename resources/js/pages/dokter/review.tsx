@@ -14,9 +14,9 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
-import { konsultasiPerawat } from '@/data/konsultasi-perawat';
 import DokterAppLayout from '@/layouts/dokter/dokter-app-layout';
 import { cn } from '@/lib/utils';
+import { type SharedData } from '@/types';
 
 type Prioritas = 'merah' | 'kuning' | 'normal';
 type FilterKey = 'semua' | Prioritas;
@@ -37,6 +37,25 @@ interface SkriningItem {
     perawat: string;
 }
 
+interface RiwayatItem {
+    id: number;
+    pasien: {
+        nama: string;
+        usia: number;
+        noRm: string;
+    };
+    tanggal: string | null;
+    status: string;
+    dokter: string;
+    hasil: {
+        icd10Kode: string;
+        icd10Nama: string;
+        saran: string;
+        keputusanRujuk: boolean;
+        waktu: string;
+    } | null;
+}
+
 interface ReviewDokterProps {
     ringkasan: {
         menungguReview: number;
@@ -45,6 +64,7 @@ interface ReviewDokterProps {
         ditanganiDiPuskesmas: number;
     };
     skrining: SkriningItem[];
+    riwayat: RiwayatItem[];
 }
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
@@ -76,9 +96,10 @@ function initials(name: string): string {
         .join('');
 }
 
-export default function ReviewDokter({ ringkasan, skrining }: ReviewDokterProps) {
+export default function ReviewDokter({ ringkasan, skrining, riwayat }: ReviewDokterProps) {
     const [filter, setFilter] = useState<FilterKey>('semua');
     const [search, setSearch] = useState('');
+    const { flash } = usePage<SharedData>().props;
 
     const filters: { key: FilterKey; label: string; count: number }[] = [
         { key: 'semua', label: 'Semua', count: skrining.length },
@@ -97,9 +118,9 @@ export default function ReviewDokter({ ringkasan, skrining }: ReviewDokterProps)
 
     const { url } = usePage();
     const tabRiwayat = url.includes('tab=riwayat');
-    const hasilSelesai = konsultasiPerawat.filter((item) => item.hasil !== null);
-    const jumlahRujuk = hasilSelesai.filter((item) => item.hasil?.keputusanRujuk === true).length;
-    const jumlahTerhindarkan = hasilSelesai.length - jumlahRujuk;
+    const hasilSelesai = riwayat;
+    const jumlahRujuk = riwayat.filter((item) => item.hasil?.keputusanRujuk === true).length;
+    const jumlahTerhindarkan = riwayat.length - jumlahRujuk;
 
     const navigasiTab = (
         <div
@@ -144,6 +165,13 @@ export default function ReviewDokter({ ringkasan, skrining }: ReviewDokterProps)
                 description="Tinjau diagnosis ICD-10, keputusan rujukan, dan verifikasi tindak lanjut pasien yang sudah selesai dikonsultasikan."
             >
                 <Head title="Riwayat hasil konsultasi" />
+
+                {flash?.success && (
+                    <div className="border-tk-green-500/35 bg-tk-green-500/10 mb-4 flex items-start gap-3 rounded-[20px] border p-4">
+                        <CheckCircle2 className="text-tk-green-500 dark:text-tk-accent mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                        <p className="text-xs leading-relaxed">{flash.success}</p>
+                    </div>
+                )}
 
                 {navigasiTab}
 
@@ -228,22 +256,30 @@ export default function ReviewDokter({ ringkasan, skrining }: ReviewDokterProps)
 
                                             <div className="min-w-0 flex-1 rounded-2xl bg-[var(--tk-page-alt)] px-3.5 py-3">
                                                 <p className="text-[11px] font-bold">
-                                                    <span className="font-mono">{item.hasil?.icd10Kode}</span> · {item.hasil?.icd10Nama}
+                                                    {item.hasil ? (
+                                                        <>
+                                                            <span className="font-mono">{item.hasil.icd10Kode}</span> · {item.hasil.icd10Nama}
+                                                        </>
+                                                    ) : item.status === 'DIRUJUK' ? (
+                                                        'Dirujuk langsung ke RS'
+                                                    ) : (
+                                                        'Ditangani di puskesmas'
+                                                    )}
                                                 </p>
                                                 <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--tk-muted)]">
-                                                    {item.hasil?.saran}
+                                                    {item.hasil?.saran ?? 'Keputusan dokter umum tercatat tanpa konsultasi spesialis.'}
                                                 </p>
                                                 <p className="mt-1 flex items-center gap-1 text-[10px] text-[var(--tk-muted)]">
                                                     <Stethoscope className="size-3 shrink-0" aria-hidden="true" />
-                                                    {item.dokter} · {item.hasil?.waktu}
+                                                    {item.dokter} · {item.hasil?.waktu ?? item.tanggal}
                                                 </p>
                                             </div>
 
                                             <Link
-                                                href={`/dokter/hasil/${item.id}`}
+                                                href={item.hasil ? `/dokter/hasil/${item.id}` : `/dokter/review/${item.id}`}
                                                 className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-9 shrink-0 items-center justify-center gap-1 self-start rounded-full px-4 text-xs font-semibold transition-colors xl:self-center"
                                             >
-                                                Lihat hasil
+                                                {item.hasil ? 'Lihat hasil' : 'Lihat keputusan'}
                                                 <ChevronRight className="size-3.5" aria-hidden="true" />
                                             </Link>
                                         </div>
@@ -274,6 +310,13 @@ export default function ReviewDokter({ ringkasan, skrining }: ReviewDokterProps)
             description="Tinjau hasil skrining perawat dan putuskan apakah pasien perlu diteruskan ke dokter spesialis."
         >
             <Head title="Daftar skrining untuk direview" />
+
+            {flash?.success && (
+                <div className="border-tk-green-500/35 bg-tk-green-500/10 mb-4 flex items-start gap-3 rounded-[20px] border p-4">
+                    <CheckCircle2 className="text-tk-green-500 dark:text-tk-accent mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                    <p className="text-xs leading-relaxed">{flash.success}</p>
+                </div>
+            )}
 
             {navigasiTab}
 

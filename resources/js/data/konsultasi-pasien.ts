@@ -3,10 +3,13 @@ import type { Resep } from './resep';
 export type StatusKonsultasi =
     | 'MENUNGGU_SKRINING'
     | 'SKRINING_SELESAI'
+    | 'MENUNGGU_PEMILIHAN_SPESIALIS'
     | 'MENUNGGU_SPESIALIS'
     | 'DIKONFIRMASI'
     | 'BERLANGSUNG'
     | 'SELESAI'
+    | 'DIRUJUK'
+    | 'DITANGANI_PUSKESMAS'
     | 'DIJADWAL_ULANG'
     | 'DITOLAK'
     | 'KEDALUWARSA'
@@ -70,10 +73,13 @@ export interface KonsultasiPasien {
 export const statusKonsultasiLabels: Record<StatusKonsultasi, string> = {
     MENUNGGU_SKRINING: 'Menunggu skrining',
     SKRINING_SELESAI: 'Skrining selesai',
+    MENUNGGU_PEMILIHAN_SPESIALIS: 'Menunggu pemilihan spesialis',
     MENUNGGU_SPESIALIS: 'Menunggu dokter spesialis',
     DIKONFIRMASI: 'Dikonfirmasi',
     BERLANGSUNG: 'Berlangsung',
     SELESAI: 'Selesai',
+    DIRUJUK: 'Dirujuk ke RS',
+    DITANGANI_PUSKESMAS: 'Ditangani di puskesmas',
     DIJADWAL_ULANG: 'Dijadwal ulang',
     DITOLAK: 'Ditolak',
     KEDALUWARSA: 'Kedaluwarsa',

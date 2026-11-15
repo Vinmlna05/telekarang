@@ -1,7 +1,6 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     Bell,
-    CalendarDays,
     CheckCircle2,
     ChevronRight,
     Clock,
@@ -11,6 +10,7 @@ import {
     Plus,
     ShieldCheck,
     Stethoscope,
+    UserRound,
     Video,
     Wifi,
 } from 'lucide-react';
@@ -25,11 +25,14 @@ import { type SharedData } from '@/types';
 type StatusKonsultasi =
     | 'MENUNGGU_SKRINING'
     | 'SKRINING_SELESAI'
+    | 'MENUNGGU_PEMILIHAN_SPESIALIS'
     | 'MENUNGGU_SPESIALIS'
     | 'DIKONFIRMASI'
     | 'BERLANGSUNG'
     | 'DIJADWAL_ULANG'
-    | 'SELESAI';
+    | 'SELESAI'
+    | 'DIRUJUK'
+    | 'DITANGANI_PUSKESMAS';
 
 interface KonsultasiAktif {
     id: number;
@@ -40,7 +43,7 @@ interface KonsultasiAktif {
     faskes: string;
     mode: ModeKonsultasi;
     jadwal: string;
-    tanggalSingkat: string;
+    tanggalSingkat: string | null;
 }
 
 interface RiwayatItem {
@@ -75,6 +78,12 @@ const statusMeta: Record<StatusKonsultasi, { label: string; step: number; tone: 
         tone: 'text-tk-green-500 dark:text-tk-accent',
         badge: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
     },
+    MENUNGGU_PEMILIHAN_SPESIALIS: {
+        label: 'Menunggu pemilihan dokter',
+        step: 2,
+        tone: 'text-tk-info',
+        badge: 'bg-tk-info/15 text-tk-info',
+    },
     MENUNGGU_SPESIALIS: { label: 'Menunggu dokter spesialis', step: 2, tone: 'text-tk-info', badge: 'bg-tk-info/15 text-tk-info' },
     DIKONFIRMASI: { label: 'Dikonfirmasi spesialis', step: 3, tone: 'text-tk-info', badge: 'bg-tk-info/15 text-tk-info' },
     BERLANGSUNG: {
@@ -95,18 +104,33 @@ const statusMeta: Record<StatusKonsultasi, { label: string; step: number; tone: 
         tone: 'text-tk-green-500 dark:text-tk-accent',
         badge: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
     },
+    DIRUJUK: {
+        label: 'Dirujuk ke RS',
+        step: 4,
+        tone: 'text-tk-warning',
+        badge: 'bg-tk-warning/15 text-tk-warning',
+    },
+    DITANGANI_PUSKESMAS: {
+        label: 'Ditangani di puskesmas',
+        step: 4,
+        tone: 'text-tk-green-500 dark:text-tk-accent',
+        badge: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
+    },
 };
 
 const langkahKonsultasi = ['Skrining', 'Review dokter', 'Spesialis', 'Hasil'];
 
 const pesanStatus: Record<StatusKonsultasi, string> = {
-    MENUNGGU_SKRINING: 'Datang ke puskesmas untuk skrining agar permintaan dapat diteruskan ke dokter spesialis.',
-    SKRINING_SELESAI: 'Skrining sudah lengkap. Menunggu review dokter umum sebelum diteruskan ke spesialis.',
+    MENUNGGU_SKRINING: 'Datang ke puskesmas pada tanggal skrining agar permintaan dapat diproses dokter umum.',
+    SKRINING_SELESAI: 'Skrining sudah lengkap. Menunggu review dokter umum sebelum diteruskan.',
+    MENUNGGU_PEMILIHAN_SPESIALIS: 'Dokter umum memutuskan konsultasi spesialis. Perawat sedang memilih dokter dan slot jadwal.',
     MENUNGGU_SPESIALIS: 'Permintaan sudah diteruskan. Menunggu konfirmasi atau penjadwalan ulang dari dokter spesialis.',
     DIKONFIRMASI: 'Dokter spesialis sudah mengonfirmasi jadwal. Buka detail untuk melihat mode konsultasi Anda.',
     BERLANGSUNG: 'Konsultasi sedang berlangsung. Buka detail untuk melanjutkan percakapan atau panggilan video.',
-    DIJADWAL_ULANG: 'Dokter spesialis menjadwalkan ulang. Pilih slot baru pada detail permintaan agar konsultasi dapat dilanjutkan.',
+    DIJADWAL_ULANG: 'Dokter spesialis menjadwalkan ulang. Buka detail permintaan agar konsultasi dapat dilanjutkan.',
     SELESAI: 'Konsultasi selesai. Hasil dan saran dokter dapat dilihat pada detail konsultasi.',
+    DIRUJUK: 'Anda dirujuk langsung ke RS. Perawat puskesmas akan membantu proses rujukan.',
+    DITANGANI_PUSKESMAS: 'Ditangani di Puskesmas Pulau Karang. Ikuti saran dokter umum dan jadwalkan kontrol bila perlu.',
 };
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
@@ -114,8 +138,8 @@ const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77
 
 const quickActions = [
     { label: 'Buat Konsultasi', href: '/pasien/konsultasi/baru', icon: Plus },
-    { label: 'Jadwal', href: '/pasien/jadwal', icon: CalendarDays },
     { label: 'Riwayat', href: '/pasien/riwayat', icon: History },
+    { label: 'Profil', href: '/pasien/profil', icon: UserRound },
 ];
 
 function inisial(nama: string): string {

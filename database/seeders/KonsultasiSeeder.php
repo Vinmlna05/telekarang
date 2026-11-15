@@ -12,7 +12,7 @@ use Illuminate\Database\Seeder;
 class KonsultasiSeeder extends Seeder
 {
     /**
-     * Seed 8 konsultasi fiktif beserta hasilnya.
+     * Seed konsultasi fiktif pada berbagai tahap alur, beserta hasilnya.
      */
     public function run(): void
     {
@@ -131,6 +131,32 @@ class KonsultasiSeeder extends Seeder
                 'saran' => null,
                 'rujuk' => false,
             ],
+            [
+                'pasien' => 'Siti Khadijah',
+                'dokter' => null,
+                'hari' => 0,
+                'jam' => '08:00',
+                'konfirmasi' => null,
+                'mode' => 'teks',
+                'status' => 'SKRINING_SELESAI',
+                'keluhan' => 'Pusing berputar sejak dua hari, riwayat tekanan darah rendah.',
+                'icd10' => null,
+                'saran' => null,
+                'rujuk' => false,
+            ],
+            [
+                'pasien' => 'Ibrahim Saleh',
+                'dokter' => null,
+                'hari' => 1,
+                'jam' => '16:00',
+                'konfirmasi' => null,
+                'mode' => 'teks',
+                'status' => 'MENUNGGU_SKRINING',
+                'keluhan' => 'Nyeri punggung bawah setelah mengangkat barang di dermaga.',
+                'icd10' => null,
+                'saran' => null,
+                'rujuk' => false,
+            ],
         ];
 
         foreach ($data as $item) {
@@ -140,24 +166,33 @@ class KonsultasiSeeder extends Seeder
                 ->subDays($item['hari'])
                 ->setTime((int) $jam, (int) $menit);
 
+            $sudahSkrining = ! in_array($item['status'], ['MENUNGGU_SKRINING', 'KEDALUWARSA'], true);
+
             $konsultasi = Konsultasi::query()->updateOrCreate(
                 [
                     'pasien_id' => $pasien->id,
-                    'dokter_spesialis_id' => $item['dokter']->id,
-                    'tanggal' => $tanggal,
+                    'keluhan' => $item['keluhan'],
                 ],
                 [
                     'dibuat_oleh' => $perawat?->id,
-                    'dokter_pengirim_id' => $dokterUmum->id,
+                    'dokter_pengirim_id' => $sudahSkrining ? $dokterUmum->id : null,
+                    'dokter_spesialis_id' => $item['dokter']?->id,
                     'mode' => $item['mode'],
                     'status' => $item['status'],
-                    'keluhan' => $item['keluhan'],
+                    'tanggal_skrining' => $sudahSkrining ? $tanggal->copy()->startOfDay() : null,
+                    'keputusan_dokter' => $item['icd10'] !== null ? 'KONSULTASI_SPESIALIS' : null,
+                    'catatan_dokter' => $item['icd10'] !== null
+                        ? 'Skrining lengkap. Diteruskan ke dokter spesialis untuk konfirmasi diagnosis dan terapi.'
+                        : null,
+                    'diputuskan_oleh' => $item['icd10'] !== null ? $dokterUmum->user_id : null,
+                    'diputuskan_pada' => $item['icd10'] !== null ? (clone $tanggal)->addHour() : null,
+                    'tanggal' => $item['status'] === 'MENUNGGU_SKRINING' ? null : $tanggal,
                     'dikonfirmasi_pada' => $item['konfirmasi'] === null
                         ? null
                         : (clone $tanggal)->addHours($item['konfirmasi']),
                     'kedaluwarsa_pada' => $item['status'] === 'KEDALUWARSA'
                         ? (clone $tanggal)->addDays(3)
-                        : null,
+                        : ($item['status'] === 'MENUNGGU_SKRINING' ? now()->endOfDay()->addDays(3) : null),
                 ],
             );
 

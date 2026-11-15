@@ -105,9 +105,9 @@ const aksesCepat = [
         icon: History,
     },
     {
-        label: 'Jadwal dokter',
-        description: 'Cari slot spesialis yang tersedia',
-        href: '/pasien/jadwal',
+        label: 'Buat konsultasi',
+        description: 'Pilih tanggal skrining dan ajukan permintaan',
+        href: '/pasien/konsultasi/baru',
         icon: CalendarDays,
     },
 ];

@@ -77,14 +77,23 @@ test('nurses can view the beranda with todays screening queue', function () {
         'waktu' => now(),
     ]);
 
+    icdUji(['kode' => 'I10', 'nama_diagnosis' => 'Hipertensi esensial']);
+    $selesai = konsultasiUji($pasien, ['status' => 'SELESAI', 'dokter_spesialis_id' => $dokter->id]);
+    hasilUji($selesai, ['icd10_kode' => 'I10', 'keputusan_rujuk' => false]);
+
     $this->actingAs($perawat)
         ->get('/perawat')
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('perawat/beranda')
             ->where('ringkasan.antreanHariIni', 2)
+            ->where('ringkasan.rujukanTerhindarkan', 1)
+            ->where('ringkasan.totalRujukan', 0)
             ->has('antrean', 3)
-            ->has('tindakLanjut', 2)
+            ->has('tindakLanjut', 1)
+            ->where('tindakLanjut.0.id', $selesai->id)
+            ->where('tindakLanjut.0.diagnosisKode', 'I10')
+            ->where('tindakLanjut.0.keputusanRujuk', false)
             ->where('antrean.0.id', $rutin->id)
             ->where('antrean.0.prioritas', 'sedang')
             ->where('antrean.1.id', $merah->id)

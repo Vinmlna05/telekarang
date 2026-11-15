@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Konsultasi extends Model
@@ -26,6 +27,16 @@ class Konsultasi extends Model
     public const MODE = ['video', 'teks'];
 
     /**
+     * Status sebelum dokter umum memutuskan arah penanganan.
+     *
+     * @var list<string>
+     */
+    public const STATUS_BELUM_DIPUTUSKAN = [
+        'MENUNGGU_SKRINING',
+        'SKRINING_SELESAI',
+    ];
+
+    /**
      * Nilai status konsultasi yang valid.
      *
      * @var list<string>
@@ -33,14 +44,49 @@ class Konsultasi extends Model
     public const STATUS = [
         'MENUNGGU_SKRINING',
         'SKRINING_SELESAI',
+        'MENUNGGU_PEMILIHAN_SPESIALIS',
         'MENUNGGU_SPESIALIS',
         'DIKONFIRMASI',
         'BERLANGSUNG',
         'SELESAI',
+        'DIRUJUK',
+        'DITANGANI_PUSKESMAS',
         'DIJADWAL_ULANG',
         'DITOLAK',
         'KEDALUWARSA',
         'DIBATALKAN',
+    ];
+
+    /**
+     * Status akhir yang tidak lagi berubah.
+     *
+     * @var list<string>
+     */
+    public const STATUS_TERMINAL = [
+        'SELESAI',
+        'DIRUJUK',
+        'DITANGANI_PUSKESMAS',
+        'DITOLAK',
+        'KEDALUWARSA',
+        'DIBATALKAN',
+    ];
+
+    /**
+     * Keputusan dokter umum setelah review skrining.
+     */
+    public const KEPUTUSAN_KONSULTASI_SPESIALIS = 'KONSULTASI_SPESIALIS';
+
+    public const KEPUTUSAN_RUJUK = 'RUJUK';
+
+    public const KEPUTUSAN_TANGANI_PUSKESMAS = 'TANGANI_PUSKESMAS';
+
+    /**
+     * @var list<string>
+     */
+    public const KEPUTUSAN_DOKTER = [
+        self::KEPUTUSAN_KONSULTASI_SPESIALIS,
+        self::KEPUTUSAN_RUJUK,
+        self::KEPUTUSAN_TANGANI_PUSKESMAS,
     ];
 
     /**
@@ -57,7 +103,13 @@ class Konsultasi extends Model
         'mode',
         'status',
         'keluhan',
+        'tanggal_skrining',
         'tanggal',
+        'keputusan_dokter',
+        'catatan_dokter',
+        'alasan_status',
+        'diputuskan_oleh',
+        'diputuskan_pada',
         'dikonfirmasi_pada',
         'kedaluwarsa_pada',
     ];
@@ -68,7 +120,9 @@ class Konsultasi extends Model
      * @var array<string, string>
      */
     protected $casts = [
+        'tanggal_skrining' => 'date',
         'tanggal' => 'datetime',
+        'diputuskan_pada' => 'datetime',
         'dikonfirmasi_pada' => 'datetime',
         'kedaluwarsa_pada' => 'datetime',
     ];
@@ -106,6 +160,30 @@ class Konsultasi extends Model
     }
 
     /**
+     * Slot jadwal spesialis yang dipilih perawat.
+     */
+    public function jadwal(): BelongsTo
+    {
+        return $this->belongsTo(Jadwal::class);
+    }
+
+    /**
+     * Pengguna yang menetapkan keputusan dokter umum.
+     */
+    public function diputuskanOleh(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'diputuskan_oleh');
+    }
+
+    /**
+     * Pesan pada ruang konsultasi.
+     */
+    public function pesan(): HasMany
+    {
+        return $this->hasMany(Pesan::class)->orderBy('waktu');
+    }
+
+    /**
      * Hasil konsultasi.
      */
     public function hasil(): HasOne
@@ -119,6 +197,22 @@ class Konsultasi extends Model
     public function skrining(): HasOne
     {
         return $this->hasOne(Skrining::class);
+    }
+
+    /**
+     * Akun pasien dipakai sebagai lawan bicara spesialis bila ada.
+     */
+    public function pasienPunyaAkun(): bool
+    {
+        return $this->pasien !== null && $this->pasien->user_id !== null;
+    }
+
+    /**
+     * Status akhir yang tidak boleh diubah lagi.
+     */
+    public function sudahSelesai(): bool
+    {
+        return in_array($this->status, self::STATUS_TERMINAL, true);
     }
 
     /**

@@ -23,7 +23,14 @@ import { useNotifikasi } from '@/hooks/use-notifikasi';
 import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
 
-type StatusKonsultasi = 'MENUNGGU_SKRINING' | 'SKRINING_SELESAI' | 'MENUNGGU_SPESIALIS';
+type StatusKonsultasi =
+    | 'MENUNGGU_SKRINING'
+    | 'SKRINING_SELESAI'
+    | 'MENUNGGU_PEMILIHAN_SPESIALIS'
+    | 'MENUNGGU_SPESIALIS'
+    | 'DIJADWAL_ULANG'
+    | 'DIKONFIRMASI'
+    | 'BERLANGSUNG';
 type PrioritasKartu = 'darurat' | 'sedang' | null;
 
 interface AntreanItem {
@@ -61,8 +68,12 @@ interface BerandaPerawatProps {
 
 const statusMeta: Record<StatusKonsultasi, { label: string; tone: string }> = {
     MENUNGGU_SKRINING: { label: 'Belum diskrining', tone: 'bg-tk-warning/15 text-tk-warning' },
-    SKRINING_SELESAI: { label: 'Skrining selesai', tone: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent' },
+    SKRINING_SELESAI: { label: 'Menunggu dokter', tone: 'bg-tk-info/15 text-tk-info' },
+    MENUNGGU_PEMILIHAN_SPESIALIS: { label: 'Pilih spesialis', tone: 'bg-tk-accent/15 text-tk-green-700 dark:text-tk-accent' },
     MENUNGGU_SPESIALIS: { label: 'Menunggu spesialis', tone: 'bg-tk-info/15 text-tk-info' },
+    DIJADWAL_ULANG: { label: 'Jadwal ulang', tone: 'bg-tk-warning/15 text-tk-warning' },
+    DIKONFIRMASI: { label: 'Dikonfirmasi', tone: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent' },
+    BERLANGSUNG: { label: 'Berlangsung', tone: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent' },
 };
 
 const prioritasMeta: Record<'darurat' | 'sedang', { label: string; tone: string; card: string; bar: string; icon: LucideIcon }> = {
@@ -88,7 +99,7 @@ const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77
 const quickActions = [
     { label: 'Skrining', href: '/perawat/permintaan', icon: ClipboardList },
     { label: 'Pasien', href: '/perawat/pasien', icon: Users },
-    { label: 'Jadwal', href: '/perawat/jadwal', icon: CalendarDays },
+    { label: 'Konsultasi', href: '/perawat/konsultasi/baru', icon: CalendarDays },
 ];
 
 function SectionHeading({ title, href, action }: { title: string; href?: string; action?: string }) {
@@ -307,7 +318,11 @@ export default function BerandaPerawat({ ringkasan, antrean, tindakLanjut }: Ber
                                                     }
                                                     className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-9 items-center gap-1 rounded-full px-3 text-xs font-semibold transition-colors"
                                                 >
-                                                    {item.status === 'MENUNGGU_SKRINING' ? 'Isi skrining' : 'Lihat permintaan'}
+                                                    {item.status === 'MENUNGGU_SKRINING'
+                                                        ? 'Isi skrining'
+                                                        : item.status === 'MENUNGGU_PEMILIHAN_SPESIALIS'
+                                                          ? 'Pilih dokter & slot'
+                                                          : 'Lihat permintaan'}
                                                     <ChevronRight className="size-3.5" aria-hidden="true" />
                                                 </Link>
                                             </div>

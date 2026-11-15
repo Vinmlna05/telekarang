@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Pasien;
 use App\Http\Controllers\Controller;
 use App\Models\Konsultasi;
 use App\Models\Pasien;
+use App\Support\TanggalIndonesia;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -20,6 +20,7 @@ class BerandaController extends Controller
     private const STATUS_AKTIF = [
         'MENUNGGU_SKRINING',
         'SKRINING_SELESAI',
+        'MENUNGGU_PEMILIHAN_SPESIALIS',
         'MENUNGGU_SPESIALIS',
         'DIKONFIRMASI',
         'BERLANGSUNG',
@@ -27,27 +28,11 @@ class BerandaController extends Controller
     ];
 
     /**
-     * @var array<int, string>
+     * Status akhir yang ditampilkan pada ringkasan riwayat.
+     *
+     * @var list<string>
      */
-    private const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-
-    /**
-     * @var array<int, string>
-     */
-    private const BULAN = [
-        1 => 'Januari',
-        2 => 'Februari',
-        3 => 'Maret',
-        4 => 'April',
-        5 => 'Mei',
-        6 => 'Juni',
-        7 => 'Juli',
-        8 => 'Agustus',
-        9 => 'September',
-        10 => 'Oktober',
-        11 => 'November',
-        12 => 'Desember',
-    ];
+    private const STATUS_RIWAYAT = ['SELESAI', 'DIRUJUK', 'DITANGANI_PUSKESMAS'];
 
     /**
      * Tampilkan beranda pasien sesuai data milik pengguna yang sedang login.
@@ -68,21 +53,21 @@ class BerandaController extends Controller
 
         if ($pasien !== null) {
             $daftarKonsultasi = Konsultasi::query()
-                ->with('dokterSpesialis')
+                ->with(['dokterSpesialis', 'jadwal'])
                 ->where('pasien_id', $pasien->id)
                 ->whereIn('status', self::STATUS_AKTIF)
-                ->orderByDesc('tanggal')
+                ->orderByDesc('updated_at')
                 ->get()
                 ->map(fn (Konsultasi $konsultasi) => [
                     'id' => $konsultasi->id,
                     'status' => $konsultasi->status,
                     'keluhan' => $konsultasi->keluhan,
-                    'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter spesialis',
-                    'spesialisasi' => $konsultasi->dokterSpesialis?->spesialisasi ?? 'Spesialis',
+                    'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter belum ditentukan',
+                    'spesialisasi' => $konsultasi->dokterSpesialis?->spesialisasi ?? 'Menunggu keputusan dokter umum',
                     'faskes' => $konsultasi->dokterSpesialis?->faskes ?? 'Puskesmas Pulau Karang',
                     'mode' => $konsultasi->mode,
-                    'jadwal' => $this->formatTanggal($konsultasi->tanggal).' · '.$konsultasi->tanggal->format('H.i').' WIT',
-                    'tanggalSingkat' => $this->formatTanggalSingkat($konsultasi->tanggal),
+                    'jadwal' => $this->jadwal($konsultasi),
+                    'tanggalSingkat' => TanggalIndonesia::singkat($konsultasi->tanggal ?? $konsultasi->tanggal_skrining),
                 ])
                 ->all();
 
@@ -90,29 +75,32 @@ class BerandaController extends Controller
 
             $selesai = Konsultasi::query()
                 ->where('pasien_id', $pasien->id)
-                ->where('status', 'SELESAI');
+                ->whereIn('status', self::STATUS_RIWAYAT);
 
             $ringkasan['totalKonsultasi'] = (clone $selesai)->count();
 
             $ringkasan['rujukanTerhindarkan'] = (clone $selesai)
-                ->whereHas('hasil', fn ($query) => $query->where('keputusan_rujuk', false))
+                ->where(function ($query) {
+                    $query->where('status', 'DITANGANI_PUSKESMAS')
+                        ->orWhere(fn ($sub) => $sub->where('status', 'SELESAI')
+                            ->whereHas('hasil', fn ($hasil) => $hasil->where('keputusan_rujuk', false)));
+                })
                 ->count();
 
             $riwayat = Konsultasi::query()
                 ->with(['dokterSpesialis', 'hasil.icd10'])
                 ->where('pasien_id', $pasien->id)
-                ->where('status', 'SELESAI')
-                ->whereHas('hasil')
-                ->orderByDesc('tanggal')
+                ->whereIn('status', self::STATUS_RIWAYAT)
+                ->orderByDesc('updated_at')
                 ->limit(3)
                 ->get()
                 ->map(fn (Konsultasi $konsultasi) => [
                     'id' => $konsultasi->id,
-                    'tanggal' => $this->formatTanggal($konsultasi->tanggal),
-                    'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter spesialis',
+                    'tanggal' => TanggalIndonesia::format($konsultasi->tanggal ?? $konsultasi->tanggal_skrining),
+                    'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter belum ditentukan',
                     'diagnosisKode' => $konsultasi->hasil?->icd10_kode ?? '-',
-                    'diagnosisNama' => $konsultasi->hasil?->icd10?->nama_diagnosis ?? 'Belum ada diagnosis',
-                    'keputusanRujuk' => (bool) $konsultasi->hasil?->keputusan_rujuk,
+                    'diagnosisNama' => $konsultasi->hasil?->icd10?->nama_diagnosis ?? $this->diagnosisFallback($konsultasi),
+                    'keputusanRujuk' => $this->keputusanRujuk($konsultasi),
                 ])
                 ->all();
         }
@@ -125,24 +113,38 @@ class BerandaController extends Controller
         ]);
     }
 
-    /**
-     * Format tanggal menjadi teks Bahasa Indonesia tanpa bergantung locale aplikasi.
-     */
-    private function formatTanggal(Carbon $tanggal): string
+    private function jadwal(Konsultasi $konsultasi): string
     {
-        return self::HARI[(int) $tanggal->format('w')]
-            .', '.$tanggal->format('j')
-            .' '.self::BULAN[(int) $tanggal->format('n')]
-            .' '.$tanggal->format('Y');
+        if ($konsultasi->tanggal !== null) {
+            return TanggalIndonesia::format($konsultasi->tanggal).' · '.$konsultasi->tanggal->format('H.i').' WIT';
+        }
+
+        if ($konsultasi->tanggal_skrining !== null) {
+            return 'Skrining: '.TanggalIndonesia::format($konsultasi->tanggal_skrining);
+        }
+
+        return 'Belum dijadwalkan';
     }
 
-    /**
-     * Format tanggal ringkas untuk daftar konsultasi pada beranda.
-     */
-    private function formatTanggalSingkat(Carbon $tanggal): string
+    private function diagnosisFallback(Konsultasi $konsultasi): string
     {
-        return $tanggal->format('d')
-            .' '.substr(self::BULAN[(int) $tanggal->format('n')], 0, 3)
-            .' '.$tanggal->format('Y');
+        return match ($konsultasi->status) {
+            'DIRUJUK' => 'Dirujuk langsung ke RS tanpa konsultasi spesialis',
+            'DITANGANI_PUSKESMAS' => 'Ditangani di Puskesmas Pulau Karang',
+            default => 'Belum ada diagnosis',
+        };
+    }
+
+    private function keputusanRujuk(Konsultasi $konsultasi): bool
+    {
+        if ($konsultasi->status === 'DIRUJUK') {
+            return true;
+        }
+
+        if ($konsultasi->status === 'DITANGANI_PUSKESMAS') {
+            return false;
+        }
+
+        return (bool) $konsultasi->hasil?->keputusan_rujuk;
     }
 }

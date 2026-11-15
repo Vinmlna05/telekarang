@@ -1,1322 +1,340 @@
 import { Head, Link } from '@inertiajs/react';
 import {
-    Activity,
-    AlertTriangle,
     ArrowLeft,
-    Building2,
     CalendarDays,
     CheckCircle2,
     ChevronRight,
     ClipboardCheck,
-    Clock,
-    Copy,
     FileText,
-    HeartPulse,
-    Info,
     MapPin,
-    Pencil,
     Phone,
-    Pill,
-    Ruler,
-    Save,
-    Scale,
-    ShieldCheck,
+    Ship,
     Stethoscope,
-    Thermometer,
     UserRound,
-    Wifi,
-    Wind,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
 
-import InputError from '@/components/input-error';
-import ResepObatCard from '@/components/resep-obat-card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { cariKonsultasiPerawatDenganHasil } from '@/data/konsultasi-perawat';
-import { tambahNotifikasi } from '@/data/notifikasi';
 import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
 
+type Prioritas = 'merah' | 'kuning' | 'normal';
+
+interface SkriningData {
+    perawat: string;
+    waktu: string | null;
+    beratBadan: number;
+    tinggiBadan: number;
+    sistol: number;
+    diastol: number;
+    suhu: number;
+    nadi: number;
+    spo2: number;
+    tandaBahaya: boolean;
+    prioritas: Prioritas;
+    catatan: string;
+}
+
+interface HasilData {
+    icd10Kode: string;
+    icd10Nama: string;
+    saran: string;
+    keputusanRujuk: boolean;
+    alasanRujuk: string | null;
+    biayaRujukan: number | null;
+    waktu: string | null;
+}
+
 interface TindakLanjutProps {
-    konsultasiId: number;
-}
-
-type FormErrors = Partial<Record<'tanggal' | 'tindakan' | 'biaya' | 'pendamping' | 'catatan' | 'persiapan' | 'konfirmasi' | 'obat', string>>;
-
-type StatusObat = '' | 'DIBERIKAN' | 'BELUM_TERSEDIA';
-
-interface StatusObatTersimpan {
-    id: number;
-    namaObat: string;
-    status: Exclude<StatusObat, ''>;
-    waktu: string;
-    catatan: string;
-}
-
-interface CatatanObat {
-    status: StatusObat;
-    waktu: string;
-    catatan: string;
-}
-
-interface TindakLanjutTersimpan {
-    konsultasiId: number;
-    rujuk: boolean;
-    tanggal: string;
-    tindakan: string[];
-    transport: string;
-    biaya: string;
-    pendamping: string;
-    catatan: string;
-    obat: StatusObatTersimpan[];
-    dicatatPada: string;
+    konsultasi: {
+        id: number;
+        nomor: string;
+        status: string;
+        keluhan: string;
+        mode: 'video' | 'teks';
+        tanggal: string | null;
+        dokter: string | null;
+        spesialisasi: string | null;
+        faskes: string | null;
+        jadwal: string | null;
+        keputusanDokter: string | null;
+        catatanDokter: string | null;
+        alasanStatus: string | null;
+    };
+    pasien: {
+        nama: string;
+        usia: number;
+        jenisKelamin: string;
+        nik: string;
+        noRm: string;
+        alamat: string;
+        telepon: string;
+        sumber: string;
+    };
+    skrining: SkriningData | null;
+    hasil: HasilData | null;
 }
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
 const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77F_100%)]';
-const inputClass =
-    'focus-visible:ring-tk-accent h-11 rounded-xl border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] px-3.5 text-sm text-[var(--tk-text)] placeholder:text-[var(--tk-muted)]';
-const textareaClass =
-    'focus-visible:ring-tk-accent mt-2 min-h-28 w-full resize-none rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] px-3.5 py-3 text-xs leading-relaxed text-[var(--tk-text)] placeholder:text-[var(--tk-muted)] focus:ring-2 focus:outline-hidden';
-const pilNetral =
-    'inline-flex items-center gap-1.5 rounded-full border border-[var(--tk-glass-border)] px-3 py-1 text-[10px] font-semibold text-[var(--tk-muted)]';
 
-const tindakanPuskesmas = [
-    'Edukasi pasien dan keluarga',
-    'Berikan obat sesuai resep',
-    'Jadwalkan kontrol ulang',
-    'Hubungi pasien dalam 3 hari',
-    'Lengkapi catatan rekam medis',
-];
-
-const transportasiRujukan = ['Kapal cepat', 'Kapal perintis', 'Ambulans puskesmas'];
-
-const persiapanRujukan = [
-    'Kondisi pasien stabil sebelum berangkat',
-    'Ringkasan skrining dan hasil konsultasi dibawa',
-    'Tempat tidur di RS tujuan sudah dikonfirmasi',
-];
-
-const biayaKapal = 850000;
-const jamPerjalanan = 6;
-
-function kunciSimpanan(id: number): string {
-    return `telekarang:tindak-lanjut:${id}`;
+function rupiah(nilai: number): string {
+    return 'Rp '.concat(nilai.toLocaleString('id-ID', { maximumFractionDigits: 0 }));
 }
 
-function bacaSimpanan(id: number): TindakLanjutTersimpan | null {
-    if (typeof window === 'undefined') {
-        return null;
-    }
-
-    try {
-        const mentah = window.localStorage.getItem(kunciSimpanan(id));
-
-        if (!mentah) {
-            return null;
-        }
-
-        const parsed = JSON.parse(mentah) as Partial<TindakLanjutTersimpan>;
-
-        if (typeof parsed.tanggal !== 'string' || typeof parsed.catatan !== 'string') {
-            return null;
-        }
-
-        const obat: StatusObatTersimpan[] = Array.isArray(parsed.obat)
-            ? parsed.obat
-                  .filter((nilai): nilai is StatusObatTersimpan => {
-                      if (!nilai || typeof nilai !== 'object') {
-                          return false;
-                      }
-
-                      const item = nilai as Partial<StatusObatTersimpan>;
-
-                      return (
-                          typeof item.id === 'number' &&
-                          typeof item.namaObat === 'string' &&
-                          (item.status === 'DIBERIKAN' || item.status === 'BELUM_TERSEDIA')
-                      );
-                  })
-                  .map((item) => ({
-                      id: item.id,
-                      namaObat: item.namaObat,
-                      status: item.status,
-                      waktu: typeof item.waktu === 'string' ? item.waktu : '',
-                      catatan: typeof item.catatan === 'string' ? item.catatan : '',
-                  }))
-            : [];
-
-        return {
-            konsultasiId: id,
-            rujuk: parsed.rujuk === true,
-            tanggal: parsed.tanggal,
-            tindakan: Array.isArray(parsed.tindakan) ? parsed.tindakan.filter((nilai): nilai is string => typeof nilai === 'string') : [],
-            transport: typeof parsed.transport === 'string' ? parsed.transport : transportasiRujukan[0],
-            biaya: typeof parsed.biaya === 'string' ? parsed.biaya : '',
-            pendamping: typeof parsed.pendamping === 'string' ? parsed.pendamping : '',
-            catatan: parsed.catatan,
-            obat,
-            dicatatPada: typeof parsed.dicatatPada === 'string' ? parsed.dicatatPada : new Date().toISOString(),
-        };
-    } catch {
-        return null;
-    }
-}
-
-function inisial(nama: string, abaikanGelar = false): string {
-    const namaBersih = abaikanGelar ? nama.replace(/^dr\.?\s+/i, '') : nama;
-
-    return (
-        namaBersih
-            .split(' ')
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((bagian) => bagian.charAt(0).toUpperCase())
-            .join('') || 'PS'
-    );
-}
-
-function formatRupiah(nilai: number): string {
-    return new Intl.NumberFormat('id-ID', {
-        style: 'currency',
-        currency: 'IDR',
-        maximumFractionDigits: 0,
-    }).format(nilai);
-}
-
-function formatTanggal(nilai: string): string {
-    if (!nilai) {
-        return '-';
-    }
-
-    const tanggal = new Date(`${nilai}T00:00:00`);
-
-    if (Number.isNaN(tanggal.getTime())) {
-        return nilai;
-    }
-
-    return tanggal.toLocaleDateString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-    });
-}
-
-function formatWaktuCatat(nilai: string): string {
-    const tanggal = new Date(nilai);
-
-    if (Number.isNaN(tanggal.getTime())) {
-        return nilai;
-    }
-
-    return tanggal.toLocaleString('id-ID', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-}
-
-function angkaDesimal(nilai: number): string {
-    return nilai.toLocaleString('id-ID', {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1,
-    });
-}
-
-function tanggalHariIni(): string {
-    return new Date().toISOString().slice(0, 10);
-}
-
-function petaCatatanObat(daftar: { id: number }[], tersimpan: StatusObatTersimpan[] = []): Record<number, CatatanObat> {
-    const peta: Record<number, CatatanObat> = {};
-
-    daftar.forEach((item) => {
-        const sebelumnya = tersimpan.find((obat) => obat.id === item.id);
-
-        peta[item.id] = {
-            status: sebelumnya?.status ?? '',
-            waktu: sebelumnya?.waktu ?? '',
-            catatan: sebelumnya?.catatan ?? '',
-        };
-    });
-
-    return peta;
-}
-
-export default function TindakLanjutPerawat({ konsultasiId }: TindakLanjutProps) {
-    const data = cariKonsultasiPerawatDenganHasil(konsultasiId);
-    const hasil = data.hasil;
-    const rujuk = hasil?.keputusanRujuk === true;
-    const daftarObat = hasil?.resep?.perluObat ? hasil.resep.items : [];
-    const daftarObatRef = useRef(daftarObat);
-    daftarObatRef.current = daftarObat;
-
-    const [tanggal, setTanggal] = useState(tanggalHariIni);
-    const [tindakan, setTindakan] = useState<string[]>([]);
-    const [transport, setTransport] = useState(transportasiRujukan[0]);
-    const [biaya, setBiaya] = useState(hasil?.biayaRujukan ? String(hasil.biayaRujukan) : '1250000');
-    const [pendamping, setPendamping] = useState('');
-    const [persiapan, setPersiapan] = useState<string[]>([]);
-    const [catatan, setCatatan] = useState('');
-    const [catatanObat, setCatatanObat] = useState<Record<number, CatatanObat>>({});
-    const [konfirmasi, setKonfirmasi] = useState(false);
-    const [errors, setErrors] = useState<FormErrors>({});
-    const [berhasil, setBerhasil] = useState(false);
-    const [tersimpan, setTersimpan] = useState<TindakLanjutTersimpan | null>(null);
-    const [tersalin, setTersalin] = useState(false);
-
-    useEffect(() => {
-        const simpanan = bacaSimpanan(data.id);
-        const daftarObatSaatIni = daftarObatRef.current;
-
-        if (!simpanan) {
-            setTersimpan(null);
-            setCatatanObat(petaCatatanObat(daftarObatSaatIni));
-            return;
-        }
-
-        setTersimpan(simpanan);
-        setTanggal(simpanan.tanggal);
-        setTindakan(simpanan.tindakan);
-        setTransport(simpanan.transport);
-        setBiaya(simpanan.biaya);
-        setPendamping(simpanan.pendamping);
-        setPersiapan(simpanan.rujuk ? persiapanRujukan : []);
-        setCatatan(simpanan.catatan);
-        setCatatanObat(petaCatatanObat(daftarObatSaatIni, simpanan.obat));
-        setKonfirmasi(true);
-    }, [data.id]);
-
-    function toggleDaftar(item: string, daftar: string[], setDaftar: (nilai: string[]) => void, kunci: 'tindakan' | 'persiapan') {
-        setDaftar(daftar.includes(item) ? daftar.filter((nilai) => nilai !== item) : [...daftar, item]);
-        setErrors((previous) => ({ ...previous, [kunci]: undefined }));
-    }
-
-    function ubahCatatanObat(id: number, perubahan: Partial<CatatanObat>) {
-        setCatatanObat((previous) => ({
-            ...previous,
-            [id]: {
-                status: previous[id]?.status ?? '',
-                waktu: previous[id]?.waktu ?? '',
-                catatan: previous[id]?.catatan ?? '',
-                ...perubahan,
-            },
-        }));
-        setErrors((previous) => ({ ...previous, obat: undefined }));
-    }
-
-    function simpanTindakLanjut(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-
-        const nextErrors: FormErrors = {};
-
-        if (!tanggal) {
-            nextErrors.tanggal = rujuk ? 'Tanggal keberangkatan wajib diisi.' : 'Tanggal kontrol wajib diisi.';
-        }
-
-        if (!rujuk && tindakan.length === 0) {
-            nextErrors.tindakan = 'Pilih minimal satu tindakan yang dilakukan.';
-        }
-
-        if (!rujuk && daftarObat.length > 0) {
-            const belumLengkap = daftarObat.some((item) => !catatanObat[item.id]?.status);
-
-            if (belumLengkap) {
-                nextErrors.obat = 'Tandai setiap obat sebagai sudah diberikan atau belum tersedia.';
-            }
-        }
-
-        if (rujuk) {
-            const nilaiBiaya = Number(biaya);
-
-            if (!Number.isFinite(nilaiBiaya) || nilaiBiaya <= 0) {
-                nextErrors.biaya = 'Estimasi biaya rujukan harus lebih dari 0.';
-            }
-
-            if (pendamping.trim().length < 3) {
-                nextErrors.pendamping = 'Nama pendamping minimal 3 karakter.';
-            }
-
-            if (persiapan.length < persiapanRujukan.length) {
-                nextErrors.persiapan = 'Centang semua persiapan rujukan sebelum menyimpan.';
-            }
-        }
-
-        if (catatan.trim().length < 10) {
-            nextErrors.catatan = 'Tulis catatan tindak lanjut minimal 10 karakter.';
-        }
-
-        if (!konfirmasi) {
-            nextErrors.konfirmasi = 'Konfirmasi bahwa tindak lanjut sudah dijelaskan kepada pasien.';
-        }
-
-        setErrors(nextErrors);
-
-        if (Object.keys(nextErrors).length > 0) {
-            return;
-        }
-
-        const obatFinal: StatusObatTersimpan[] = rujuk
-            ? []
-            : daftarObat.map((item) => ({
-                  id: item.id,
-                  namaObat: item.namaObat,
-                  status: (catatanObat[item.id]?.status || 'BELUM_TERSEDIA') as Exclude<StatusObat, ''>,
-                  waktu: catatanObat[item.id]?.waktu ?? '',
-                  catatan: catatanObat[item.id]?.catatan.trim() ?? '',
-              }));
-
-        const waktuSekarang = new Date();
-        const rekaman: TindakLanjutTersimpan = {
-            konsultasiId: data.id,
-            rujuk,
-            tanggal,
-            tindakan,
-            transport,
-            biaya,
-            pendamping: pendamping.trim(),
-            catatan: catatan.trim(),
-            obat: obatFinal,
-            dicatatPada: waktuSekarang.toISOString(),
-        };
-
-        try {
-            window.localStorage.setItem(kunciSimpanan(data.id), JSON.stringify(rekaman));
-        } catch {
-            // Penyimpanan lokal tidak tersedia; catatan tetap ditampilkan pada sesi ini.
-        }
-
-        if (!rujuk && obatFinal.length > 0) {
-            const diberikan = obatFinal.filter((obat) => obat.status === 'DIBERIKAN').length;
-            const belum = obatFinal.length - diberikan;
-
-            tambahNotifikasi('pasien', {
-                id: `obat-${data.id}`,
-                tipe: 'OBAT_DIBERIKAN',
-                judul: 'Status obat sudah diperbarui',
-                isi:
-                    belum > 0
-                        ? `${diberikan} obat sudah diberikan di puskesmas. ${belum} obat belum tersedia dan akan diinformasikan kembali.`
-                        : 'Semua obat pada resep sudah diberikan di puskesmas.',
-                url: `/pasien/konsultasi/${data.id}`,
-                dibaca: false,
-                waktu: waktuSekarang.toISOString(),
-            });
-        }
-
-        setTersimpan(rekaman);
-        setBerhasil(true);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    async function salinRingkasan(teks: string) {
-        try {
-            await navigator.clipboard.writeText(teks);
-            setTersalin(true);
-            window.setTimeout(() => setTersalin(false), 2000);
-        } catch {
-            setTersalin(false);
-        }
-    }
-
-    function ubahCatatan() {
-        setBerhasil(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-
-    if (!hasil) {
-        return (
-            <PerawatAppLayout
-                active="antrean"
-                title="Tindak lanjut hasil"
-                description="Tindak lanjut dapat dicatat setelah dokter spesialis mengisi hasil konsultasi."
-            >
-                <Head title="Tindak lanjut hasil" />
-                <div className={cn('mx-auto max-w-xl rounded-[24px] p-6 text-center', glass)}>
-                    <span className="bg-tk-warning/15 text-tk-warning mx-auto grid size-12 place-items-center rounded-full">
-                        <Clock className="size-6" aria-hidden="true" />
-                    </span>
-                    <h1 className="mt-3 text-lg font-bold">Hasil konsultasi belum tersedia</h1>
-                    <p className="mt-1 text-[11px] leading-relaxed text-[var(--tk-muted)]">
-                        Tindak lanjut hanya dapat dicatat setelah dokter spesialis mengisi diagnosis ICD-10 dan keputusan rujukan.
-                    </p>
-                    <Link
-                        href={`/perawat/konsultasi/${data.id}`}
-                        className="bg-tk-accent text-tk-deep hover:bg-tk-mint mt-4 inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-[11px] font-bold"
-                    >
-                        <ArrowLeft className="size-3.5" aria-hidden="true" />
-                        Kembali ke detail konsultasi
-                    </Link>
-                </div>
-            </PerawatAppLayout>
-        );
-    }
-
-    const rekaman = tersimpan;
-    const tanggalCatat = rekaman?.tanggal ?? tanggal;
-    const transportCatat = rekaman?.transport ?? transport;
-    const tindakanCatat = rekaman?.tindakan ?? tindakan;
-    const biayaCatat = rekaman?.biaya ?? biaya;
-    const catatanCatat = rekaman?.catatan ?? catatan.trim();
-
-    const ringkasanPasien = rujuk
-        ? `Dokter spesialis menyarankan ${data.pasien.nama} dirujuk ke ${data.faskes}. Rencana keberangkatan ${formatTanggal(tanggalCatat)} dengan ${transportCatat.toLowerCase()}. Perkiraan biaya ${formatRupiah(Number(biayaCatat) || 0)}.`
-        : `Dokter spesialis menyarankan ${data.pasien.nama} dirawat di puskesmas tanpa rujukan. Tindakan yang dilakukan: ${tindakanCatat.join(', ') || 'belum dicatat'}. Jadwal kontrol ${formatTanggal(tanggalCatat)}.`;
-
-    if (berhasil) {
-        return (
-            <PerawatAppLayout
-                active="antrean"
-                title="Tindak lanjut tersimpan"
-                description="Catatan tindak lanjut sudah masuk ke riwayat konsultasi pasien."
-            >
-                <Head title="Tindak lanjut tersimpan" />
-
-                <div className="mx-auto grid w-full max-w-2xl gap-5">
-                    <section className={cn('overflow-hidden rounded-[28px]', glass)}>
-                        <div className={cn('relative overflow-hidden px-6 py-8 text-center md:px-8', bannerGradient)}>
-                            <div
-                                aria-hidden="true"
-                                className="pointer-events-none absolute -top-10 -right-6 size-36 rounded-full bg-white/25 blur-xl"
-                            />
-                            <div className="relative">
-                                <span className="bg-tk-deep/10 text-tk-deep mx-auto grid size-16 place-items-center rounded-full">
-                                    <CheckCircle2 className="size-8" aria-hidden="true" />
-                                </span>
-                                <p className="text-tk-deep/70 mt-4 text-[10px] font-bold tracking-[0.16em] uppercase">Tersimpan</p>
-                                <h1 className="text-tk-deep mt-1 text-2xl leading-tight font-extrabold">Tindak lanjut tercatat</h1>
-                                <p className="text-tk-deep/75 mx-auto mt-2 max-w-md text-xs leading-relaxed">
-                                    {rujuk ? 'Proses rujukan pasien sudah dicatat.' : 'Tindakan puskesmas dan kontrol pasien sudah dicatat.'}
-                                </p>
-                                {rekaman && <p className="text-tk-deep/60 mt-2 text-[10px]">Dicatat {formatWaktuCatat(rekaman.dicatatPada)}</p>}
-                            </div>
-                        </div>
-
-                        <div className="p-5 md:p-6">
-                            <div className="flex items-center justify-between gap-3">
-                                <p className="text-[11px] font-semibold text-[var(--tk-muted)]">Keputusan dokter spesialis</p>
-                                <span
-                                    className={cn(
-                                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold',
-                                        rujuk ? 'bg-tk-warning/15 text-tk-warning' : 'bg-tk-success/15 text-tk-success',
-                                    )}
-                                >
-                                    {rujuk ? <MapPin className="size-3" aria-hidden="true" /> : <ShieldCheck className="size-3" aria-hidden="true" />}
-                                    {rujuk ? 'Dirujuk' : 'Rujukan terhindarkan'}
-                                </span>
-                            </div>
-
-                            <dl className="mt-4 grid gap-3 rounded-2xl bg-[var(--tk-page-alt)] p-4 text-xs sm:grid-cols-2">
-                                <div>
-                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Pasien</dt>
-                                    <dd className="mt-1 font-bold">{data.pasien.nama}</dd>
-                                    <dd className="text-[11px] text-[var(--tk-muted)]">{data.pasien.noRm}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Diagnosis ICD-10</dt>
-                                    <dd className="mt-1 font-bold">
-                                        <span className="font-mono">{hasil.icd10Kode}</span> · {hasil.icd10Nama}
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">
-                                        {rujuk ? 'Tanggal keberangkatan' : 'Tanggal kontrol'}
-                                    </dt>
-                                    <dd className="mt-1 font-bold">{formatTanggal(tanggalCatat)}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">
-                                        {rujuk ? 'Transportasi' : 'Tindakan tercatat'}
-                                    </dt>
-                                    <dd className="mt-1 font-bold">{rujuk ? transportCatat : `${tindakanCatat.length} tindakan`}</dd>
-                                </div>
-                                {rujuk && (
-                                    <div className="sm:col-span-2">
-                                        <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">
-                                            RS tujuan dan pendamping
-                                        </dt>
-                                        <dd className="mt-1 font-bold">
-                                            {data.faskes} · {rekaman?.pendamping || pendamping.trim()}
-                                        </dd>
-                                    </div>
-                                )}
-                                <div className="sm:col-span-2">
-                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Catatan</dt>
-                                    <dd className="mt-1 leading-relaxed">{catatanCatat}</dd>
-                                </div>
-                            </dl>
-
-                            {!rujuk && rekaman && rekaman.obat.length > 0 && (
-                                <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] p-4">
-                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Status obat</p>
-                                    <ul className="mt-2 grid gap-2">
-                                        {rekaman.obat.map((obat) => (
-                                            <li
-                                                key={obat.id}
-                                                className="flex items-start justify-between gap-3 rounded-xl bg-[var(--tk-page-alt)] px-3 py-2"
-                                            >
-                                                <div className="min-w-0">
-                                                    <p className="text-[11px] font-bold">{obat.namaObat}</p>
-                                                    {obat.catatan && <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">{obat.catatan}</p>}
-                                                </div>
-                                                <span
-                                                    className={cn(
-                                                        'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold',
-                                                        obat.status === 'DIBERIKAN'
-                                                            ? 'bg-tk-success/15 text-tk-success'
-                                                            : 'bg-tk-warning/15 text-tk-warning',
-                                                    )}
-                                                >
-                                                    {obat.status === 'DIBERIKAN'
-                                                        ? `Diberikan${obat.waktu ? ` ${obat.waktu}` : ''}`
-                                                        : 'Belum tersedia'}
-                                                </span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-
-                            <div className={cn('mt-4 flex items-start gap-2.5 rounded-2xl p-3.5', rujuk ? 'bg-tk-warning/10' : 'bg-tk-success/10')}>
-                                <span
-                                    className={cn(
-                                        'grid size-8 shrink-0 place-items-center rounded-full',
-                                        rujuk ? 'bg-tk-warning/15 text-tk-warning' : 'bg-tk-success/15 text-tk-success',
-                                    )}
-                                >
-                                    {rujuk ? <MapPin className="size-4" aria-hidden="true" /> : <ShieldCheck className="size-4" aria-hidden="true" />}
-                                </span>
-                                <div>
-                                    <p className="text-[11px] font-bold">
-                                        {rujuk ? 'Rujukan perlu diproses' : 'Kasus tercatat sebagai rujukan terhindarkan'}
-                                    </p>
-                                    <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                        {rujuk
-                                            ? `Estimasi biaya ${formatRupiah(Number(biayaCatat) || 0)} dengan transportasi ${transportCatat.toLowerCase()}.`
-                                            : `Estimasi penghematan ${formatRupiah(biayaKapal)} dan ${jamPerjalanan} jam perjalanan pulang-pergi.`}
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] p-4">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">
-                                            Ringkasan untuk pasien
-                                        </p>
-                                        <p className="mt-2 text-[11px] leading-relaxed">{ringkasanPasien}</p>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => salinRingkasan(ringkasanPasien)}
-                                    className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[var(--tk-glass-border)] px-3.5 text-[10px] font-semibold transition-colors hover:bg-[var(--tk-page-alt)]"
-                                >
-                                    <Copy className="size-3.5" aria-hidden="true" />
-                                    {tersalin ? 'Ringkasan tersalin' : 'Salin ringkasan'}
-                                </button>
-                            </div>
-
-                            <div className="mt-5 grid gap-2 sm:flex">
-                                <button
-                                    type="button"
-                                    onClick={ubahCatatan}
-                                    className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-[var(--tk-glass-border)] px-5 text-xs font-semibold transition-colors hover:bg-[var(--tk-page-alt)]"
-                                >
-                                    <Pencil className="size-3.5" aria-hidden="true" />
-                                    Ubah catatan
-                                </button>
-                                <Link
-                                    href={`/perawat/konsultasi/${data.id}`}
-                                    className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-5 text-xs font-bold transition-colors"
-                                >
-                                    Lihat detail konsultasi
-                                    <ChevronRight className="size-3.5" aria-hidden="true" />
-                                </Link>
-                                <Link
-                                    href="/perawat/permintaan"
-                                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--tk-glass-border)] px-5 text-xs font-semibold text-[var(--tk-text)] transition-colors hover:bg-[var(--tk-page-alt)]"
-                                >
-                                    Kembali ke antrean
-                                </Link>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-            </PerawatAppLayout>
-        );
-    }
+export default function TindakLanjutPerawat({ konsultasi, pasien, skrining, hasil }: TindakLanjutProps) {
+    const perluRujuk = hasil?.keputusanRujuk === true || konsultasi.status === 'DIRUJUK';
+    const terhindarkan = hasil !== null && !hasil.keputusanRujuk;
+
+    const langkahTindakLanjut = perluRujuk
+        ? [
+              'Hubungi pasien dan keluarga untuk menjelaskan rencana rujukan.',
+              'Siapkan surat rujukan, hasil skrining, dan catatan konsultasi.',
+              'Koordinasikan transportasi kapal dan rumah sakit tujuan.',
+              'Catat biaya rujukan aktual dan waktu keberangkatan.',
+          ]
+        : [
+              'Sampaikan saran dokter spesialis dengan bahasa sederhana.',
+              'Serahkan resep atau rencana tindakan ke pasien.',
+              'Jadwalkan kontrol ulang di puskesmas.',
+              'Dokumentasikan tindakan sebagai rujukan terhindarkan.',
+          ];
 
     return (
         <PerawatAppLayout
             active="antrean"
-            title="Tindak lanjut hasil"
-            description="Catat tindakan puskesmas atau proses rujukan setelah dokter spesialis memberikan hasil konsultasi."
+            title={`Tindak lanjut ${pasien.nama}`}
+            description="Tindak lanjut hasil konsultasi: rujuk ke RS atau tangani di puskesmas."
         >
-            <Head title="Tindak lanjut hasil" />
+            <Head title={`Tindak lanjut ${pasien.nama}`} />
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <Link
-                    href={`/perawat/konsultasi/${data.id}`}
+                    href="/perawat/permintaan"
                     className="inline-flex min-h-9 items-center gap-1.5 text-[11px] font-semibold text-[var(--tk-muted)] transition-colors hover:text-[var(--tk-text)]"
                 >
                     <ArrowLeft className="size-3.5" aria-hidden="true" />
-                    Kembali ke detail konsultasi
+                    Kembali ke daftar permintaan
                 </Link>
-                <span className={pilNetral}>
-                    <Clock className="size-3" aria-hidden="true" />
-                    {tersimpan ? `Sudah dicatat ${formatWaktuCatat(tersimpan.dicatatPada)}` : 'Belum ditindaklanjuti'}
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--tk-glass-border)] px-3 py-1 text-[10px] font-semibold text-[var(--tk-muted)]">
+                    <ClipboardCheck className="size-3" aria-hidden="true" />
+                    {konsultasi.nomor}
                 </span>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.9fr)]">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(300px,0.9fr)]">
                 <div className="grid min-w-0 content-start gap-5">
-                    <section aria-labelledby="keputusan-spesialis" className={cn('overflow-hidden rounded-[24px]', glass)}>
-                        <div className={cn('relative overflow-hidden p-5 md:p-6', bannerGradient)}>
-                            <div
-                                aria-hidden="true"
-                                className="pointer-events-none absolute -top-10 -right-6 size-36 rounded-full bg-white/25 blur-xl"
-                            />
-                            <div className="relative">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="bg-tk-deep/10 text-tk-deep inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold">
-                                        <FileText className="size-3.5" aria-hidden="true" />
-                                        Hasil konsultasi selesai
-                                    </span>
-                                    <span className="bg-tk-deep/10 text-tk-deep inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold">
-                                        {data.nomor}
-                                    </span>
-                                </div>
-                                <h1 className="text-tk-deep mt-4 text-2xl leading-tight font-extrabold">Tindak lanjut hasil konsultasi</h1>
-                                <p className="text-tk-deep/75 mt-1 text-xs">
-                                    {data.pasien.nama} · {data.pasien.usia} tahun · {data.pasien.noRm}
-                                </p>
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                    <span className="bg-tk-deep text-tk-mint inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold">
-                                        ICD-10 {hasil.icd10Kode}
-                                    </span>
-                                    <span
-                                        className={cn(
-                                            'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold',
-                                            rujuk ? 'text-tk-warning bg-white/90' : 'text-tk-success bg-white/90',
-                                        )}
-                                    >
-                                        {rujuk ? (
-                                            <MapPin className="size-3.5" aria-hidden="true" />
-                                        ) : (
-                                            <ShieldCheck className="size-3.5" aria-hidden="true" />
-                                        )}
-                                        {rujuk ? 'Perlu dirujuk' : 'Tidak dirujuk'}
-                                    </span>
-                                </div>
-                            </div>
+                    <section className={cn('overflow-hidden rounded-[24px]', glass)} aria-labelledby="ringkasan-tindak-lanjut">
+                        <div
+                            className={cn(
+                                'p-5 md:p-6',
+                                perluRujuk ? 'bg-[linear-gradient(135deg,#5A4310_0%,#C98A1B_55%,#F2B84B_100%)]' : bannerGradient,
+                                'text-tk-deep',
+                            )}
+                        >
+                            <span className="bg-tk-deep/10 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold uppercase">
+                                {perluRujuk ? 'Rujuk ke RS' : 'Tangani di puskesmas'}
+                            </span>
+                            <h1 id="ringkasan-tindak-lanjut" className="mt-3 text-2xl leading-tight font-extrabold">
+                                {pasien.nama}
+                            </h1>
+                            <p className="text-tk-deep/75 mt-1 text-xs">
+                                {pasien.usia} tahun · {pasien.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'} · {pasien.noRm}
+                            </p>
+                            <p className="text-tk-deep/80 mt-3 text-[11px] leading-relaxed">
+                                {perluRujuk
+                                    ? 'Pasien membutuhkan rujukan ke RS. Bantu proses rujukan dan catat biaya perjalanan.'
+                                    : 'Kasus dapat diselesaikan di puskesmas. Tindak lanjuti saran dokter dan jadwalkan kontrol.'}
+                            </p>
                         </div>
 
-                        <div className="p-5 md:p-6">
+                        <div className="grid gap-3 p-5 md:p-6">
+                            <div className="rounded-2xl bg-[var(--tk-page-alt)] p-4">
+                                <p className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">Keluhan awal</p>
+                                <p className="mt-1 text-[11px] leading-relaxed">{konsultasi.keluhan}</p>
+                            </div>
+
+                            <dl className="grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-2xl bg-[var(--tk-page-alt)] p-4 text-[11px]">
+                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Dokter spesialis</dt>
+                                    <dd className="mt-0.5 font-semibold">{konsultasi.dokter ?? 'Tidak ada konsultasi spesialis'}</dd>
+                                    <dd className="mt-0.5 text-[10px] text-[var(--tk-muted)]">
+                                        {konsultasi.spesialisasi ?? 'Dirujuk langsung dokter umum'}
+                                    </dd>
+                                </div>
+                                <div className="rounded-2xl bg-[var(--tk-page-alt)] p-4 text-[11px]">
+                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Slot konsultasi</dt>
+                                    <dd className="mt-0.5 font-semibold">{konsultasi.jadwal ?? konsultasi.tanggal ?? '-'}</dd>
+                                    <dd className="mt-0.5 text-[10px] text-[var(--tk-muted)]">
+                                        {konsultasi.mode === 'video' ? 'Mode video' : 'Mode teks'}
+                                    </dd>
+                                </div>
+                            </dl>
+
+                            {konsultasi.catatanDokter && (
+                                <div className="rounded-2xl bg-[var(--tk-page-alt)] p-4">
+                                    <p className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">
+                                        Catatan dokter umum
+                                    </p>
+                                    <p className="mt-1 text-[11px] leading-relaxed">{konsultasi.catatanDokter}</p>
+                                </div>
+                            )}
+                        </div>
+                    </section>
+
+                    {hasil ? (
+                        <section className={cn('rounded-[24px] p-5 md:p-6', glass)} aria-labelledby="hasil-spesialis">
                             <div className="flex items-start gap-3">
-                                <span className="text-tk-green-500 dark:text-tk-accent bg-tk-green-500/[0.12] dark:bg-tk-accent/[0.12] grid size-10 shrink-0 place-items-center rounded-full">
+                                <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-10 shrink-0 place-items-center rounded-full">
+                                    <FileText className="size-5" aria-hidden="true" />
+                                </span>
+                                <div>
+                                    <h2 id="hasil-spesialis" className="text-[15px] font-bold">
+                                        Hasil konsultasi spesialis
+                                    </h2>
+                                    <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">
+                                        {konsultasi.dokter} · {hasil.waktu}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 grid gap-3">
+                                <div className="rounded-2xl bg-[var(--tk-page-alt)] p-4">
+                                    <p className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">Diagnosis ICD-10</p>
+                                    <p className="mt-1 text-xs font-bold">
+                                        <span className="font-mono">{hasil.icd10Kode}</span> · {hasil.icd10Nama}
+                                    </p>
+                                </div>
+                                <div className="rounded-2xl bg-[var(--tk-page-alt)] p-4">
+                                    <p className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">Saran untuk pasien</p>
+                                    <p className="mt-1 text-[11px] leading-relaxed">{hasil.saran}</p>
+                                </div>
+                                {perluRujuk && hasil.alasanRujuk && (
+                                    <div className="bg-tk-warning/10 rounded-2xl p-4">
+                                        <p className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">Alasan rujukan</p>
+                                        <p className="mt-1 text-[11px] leading-relaxed">{hasil.alasanRujuk}</p>
+                                    </div>
+                                )}
+                                {perluRujuk && hasil.biayaRujukan !== null && (
+                                    <div className="bg-tk-warning/10 flex items-center justify-between gap-3 rounded-2xl p-4">
+                                        <div className="flex items-center gap-2">
+                                            <Ship className="text-tk-warning size-4" aria-hidden="true" />
+                                            <p className="text-[11px] font-semibold">Estimasi biaya rujukan</p>
+                                        </div>
+                                        <p className="text-tk-warning text-sm font-extrabold">{rupiah(hasil.biayaRujukan)}</p>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                    ) : (
+                        <section className={cn('rounded-[24px] p-5 md:p-6', glass)}>
+                            <div className="flex items-start gap-3">
+                                <span className="bg-tk-warning/15 text-tk-warning grid size-10 shrink-0 place-items-center rounded-full">
                                     <Stethoscope className="size-5" aria-hidden="true" />
                                 </span>
                                 <div>
-                                    <h2 id="keputusan-spesialis" className="text-[15px] font-bold">
-                                        {hasil.icd10Nama}
-                                    </h2>
-                                    <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">
-                                        {data.dokter} · {hasil.waktu}
+                                    <h2 className="text-[15px] font-bold">Dirujuk langsung oleh dokter umum</h2>
+                                    <p className="mt-1 text-[11px] leading-relaxed text-[var(--tk-muted)]">
+                                        {konsultasi.alasanStatus ?? konsultasi.catatanDokter ?? 'Pasien dirujuk tanpa konsultasi spesialis.'}
                                     </p>
                                 </div>
                             </div>
+                        </section>
+                    )}
 
-                            <p className="mt-3 text-[11px] leading-relaxed">{hasil.saran}</p>
-
-                            {rujuk && hasil.alasanRujuk && (
-                                <p className="bg-tk-warning/10 mt-3 rounded-xl px-3 py-2.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                    <span className="font-bold text-[var(--tk-text)]">Alasan rujukan: </span>
-                                    {hasil.alasanRujuk}
-                                </p>
-                            )}
-
-                            {rujuk && (
-                                <div className="mt-3 flex items-start gap-2 rounded-xl bg-[var(--tk-page-alt)] px-3 py-2.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                    <Building2 className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                                    <span>
-                                        RS tujuan: <span className="font-bold text-[var(--tk-text)]">{data.faskes}</span> · {data.spesialisasi}
+                    <section className={cn('rounded-[24px] p-5 md:p-6', glass)} aria-labelledby="langkah-perawat">
+                        <h2 id="langkah-perawat" className="text-[15px] font-bold">
+                            Langkah tindak lanjut
+                        </h2>
+                        <ol className="mt-3 grid gap-2.5">
+                            {langkahTindakLanjut.map((langkah, index) => (
+                                <li key={langkah} className="flex items-start gap-2.5">
+                                    <span className="bg-tk-green-500/[0.15] text-tk-green-500 dark:text-tk-accent grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-bold">
+                                        {index + 1}
                                     </span>
-                                </div>
-                            )}
+                                    <span className="text-[11px] leading-relaxed">{langkah}</span>
+                                </li>
+                            ))}
+                        </ol>
+
+                        {terhindarkan && (
+                            <p className="bg-tk-green-500/[0.10] text-tk-green-500 dark:text-tk-accent mt-4 flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11px] font-semibold">
+                                <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                                Kasus ini tercatat sebagai rujukan terhindarkan dan masuk ke dasbor.
+                            </p>
+                        )}
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <Link
+                                href="/perawat/permintaan"
+                                className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-11 items-center gap-1.5 rounded-full px-5 text-xs font-bold"
+                            >
+                                Kembali ke daftar permintaan
+                                <ChevronRight className="size-3.5" aria-hidden="true" />
+                            </Link>
+                            <Link
+                                href={`/perawat/konsultasi/${konsultasi.id}`}
+                                className="inline-flex min-h-11 items-center rounded-full border border-[var(--tk-glass-border)] px-5 text-xs font-semibold transition-colors hover:bg-[var(--tk-page-alt)]"
+                            >
+                                Lihat detail konsultasi
+                            </Link>
                         </div>
                     </section>
-
-                    <form onSubmit={simpanTindakLanjut} noValidate className="grid gap-5">
-                        <section aria-labelledby="form-tindak-lanjut" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
-                            <div className="flex items-start gap-3">
-                                <span
-                                    className={cn(
-                                        'grid size-9 shrink-0 place-items-center rounded-full',
-                                        rujuk ? 'bg-tk-warning/15 text-tk-warning' : 'bg-tk-success/15 text-tk-success',
-                                    )}
-                                >
-                                    {rujuk ? (
-                                        <MapPin className="size-4" aria-hidden="true" />
-                                    ) : (
-                                        <ClipboardCheck className="size-4" aria-hidden="true" />
-                                    )}
-                                </span>
-                                <div>
-                                    <h2 id="form-tindak-lanjut" className="text-[15px] font-bold">
-                                        {rujuk ? 'Proses rujukan' : 'Tindakan di puskesmas'}
-                                    </h2>
-                                    <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--tk-muted)]">
-                                        {rujuk
-                                            ? 'Catat persiapan keberangkatan dan perkiraan biaya agar proses rujukan dapat dipantau.'
-                                            : 'Catat tindakan yang sudah dilakukan dan jadwalkan kontrol pasien.'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {rujuk ? (
-                                <div className="mt-5 grid gap-4">
-                                    <div className="grid gap-4 sm:grid-cols-2">
-                                        <div>
-                                            <label htmlFor="tanggal" className="text-[11px] font-bold">
-                                                Tanggal keberangkatan <span className="text-tk-danger">*</span>
-                                            </label>
-                                            <Input
-                                                id="tanggal"
-                                                type="date"
-                                                value={tanggal}
-                                                onChange={(event) => {
-                                                    setTanggal(event.target.value);
-                                                    setErrors((previous) => ({ ...previous, tanggal: undefined }));
-                                                }}
-                                                aria-invalid={Boolean(errors.tanggal)}
-                                                className={cn(inputClass, 'mt-2')}
-                                            />
-                                            <InputError message={errors.tanggal} className="text-tk-danger mt-1.5 text-[10px]" />
-                                        </div>
-
-                                        <div>
-                                            <label htmlFor="biaya" className="text-[11px] font-bold">
-                                                Estimasi biaya <span className="text-tk-danger">*</span>
-                                            </label>
-                                            <Input
-                                                id="biaya"
-                                                type="number"
-                                                min={0}
-                                                value={biaya}
-                                                onChange={(event) => {
-                                                    setBiaya(event.target.value);
-                                                    setErrors((previous) => ({ ...previous, biaya: undefined }));
-                                                }}
-                                                aria-invalid={Boolean(errors.biaya)}
-                                                className={cn(inputClass, 'mt-2')}
-                                            />
-                                            <InputError message={errors.biaya} className="text-tk-danger mt-1.5 text-[10px]" />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <p className="text-[11px] font-bold">Transportasi</p>
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            {transportasiRujukan.map((item) => (
-                                                <button
-                                                    key={item}
-                                                    type="button"
-                                                    aria-pressed={transport === item}
-                                                    onClick={() => setTransport(item)}
-                                                    className={cn(
-                                                        'min-h-9 rounded-full border px-3.5 text-[10px] font-semibold transition-colors',
-                                                        transport === item
-                                                            ? 'bg-tk-accent text-tk-deep border-transparent'
-                                                            : 'border-[var(--tk-glass-border)] text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
-                                                    )}
-                                                >
-                                                    {item}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label htmlFor="pendamping" className="text-[11px] font-bold">
-                                            Pendamping pasien <span className="text-tk-danger">*</span>
-                                        </label>
-                                        <Input
-                                            id="pendamping"
-                                            value={pendamping}
-                                            onChange={(event) => {
-                                                setPendamping(event.target.value);
-                                                setErrors((previous) => ({ ...previous, pendamping: undefined }));
-                                            }}
-                                            aria-invalid={Boolean(errors.pendamping)}
-                                            placeholder="Nama keluarga atau petugas yang mendampingi"
-                                            className={cn(inputClass, 'mt-2')}
-                                        />
-                                        <InputError message={errors.pendamping} className="text-tk-danger mt-1.5 text-[10px]" />
-                                    </div>
-
-                                    <fieldset>
-                                        <legend className="flex w-full items-center justify-between gap-2 text-[11px] font-bold">
-                                            <span>
-                                                Persiapan rujukan <span className="text-tk-danger">*</span>
-                                            </span>
-                                            <span className="text-[10px] font-semibold text-[var(--tk-muted)]">
-                                                {persiapan.length}/{persiapanRujukan.length}
-                                            </span>
-                                        </legend>
-                                        <div className="mt-2 grid gap-2">
-                                            {persiapanRujukan.map((item) => (
-                                                <label
-                                                    key={item}
-                                                    className="flex min-h-11 items-center gap-2.5 rounded-xl border border-[var(--tk-glass-border)] px-3 py-2 text-[11px]"
-                                                >
-                                                    <Checkbox
-                                                        checked={persiapan.includes(item)}
-                                                        onCheckedChange={() => toggleDaftar(item, persiapan, setPersiapan, 'persiapan')}
-                                                        aria-invalid={Boolean(errors.persiapan)}
-                                                        className="data-[state=checked]:border-tk-green-500 data-[state=checked]:bg-tk-green-500 border-[var(--tk-glass-border)] data-[state=checked]:text-white"
-                                                    />
-                                                    {item}
-                                                </label>
-                                            ))}
-                                        </div>
-                                        <InputError message={errors.persiapan} className="text-tk-danger mt-1.5 text-[10px]" />
-                                    </fieldset>
-                                </div>
-                            ) : (
-                                <div className="mt-5 grid gap-4">
-                                    {daftarObat.length > 0 && <ResepObatCard resep={hasil.resep} judul="Resep dokter spesialis" />}
-
-                                    <fieldset>
-                                        <legend className="text-[11px] font-bold">
-                                            Tindakan yang dilakukan <span className="text-tk-danger">*</span>
-                                        </legend>
-                                        <div className="mt-2 grid gap-2">
-                                            {tindakanPuskesmas.map((item) => (
-                                                <label
-                                                    key={item}
-                                                    className="flex min-h-11 items-center gap-2.5 rounded-xl border border-[var(--tk-glass-border)] px-3 py-2 text-[11px]"
-                                                >
-                                                    <Checkbox
-                                                        checked={tindakan.includes(item)}
-                                                        onCheckedChange={() => toggleDaftar(item, tindakan, setTindakan, 'tindakan')}
-                                                        aria-invalid={Boolean(errors.tindakan)}
-                                                        className="data-[state=checked]:border-tk-green-500 data-[state=checked]:bg-tk-green-500 border-[var(--tk-glass-border)] data-[state=checked]:text-white"
-                                                    />
-                                                    {item}
-                                                </label>
-                                            ))}
-                                        </div>
-                                        <InputError message={errors.tindakan} className="text-tk-danger mt-1.5 text-[10px]" />
-                                    </fieldset>
-
-                                    {daftarObat.length > 0 && (
-                                        <fieldset>
-                                            <legend className="flex w-full items-center justify-between gap-2 text-[11px] font-bold">
-                                                <span>
-                                                    Status obat dari dokter spesialis <span className="text-tk-danger">*</span>
-                                                </span>
-                                                <span className="text-[10px] font-semibold text-[var(--tk-muted)]">
-                                                    {daftarObat.filter((item) => catatanObat[item.id]?.status).length}/{daftarObat.length} ditandai
-                                                </span>
-                                            </legend>
-                                            <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                                Tandai setiap obat apakah sudah diberikan atau belum tersedia di puskesmas.
-                                            </p>
-
-                                            <div className="mt-2 grid gap-2.5">
-                                                {daftarObat.map((item) => {
-                                                    const catatanItem = catatanObat[item.id] ?? { status: '', waktu: '', catatan: '' };
-
-                                                    return (
-                                                        <div
-                                                            key={item.id}
-                                                            className="rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-3.5"
-                                                        >
-                                                            <div className="flex items-start gap-2.5">
-                                                                <span className="bg-tk-green-500/15 text-tk-green-500 dark:text-tk-accent mt-0.5 grid size-8 shrink-0 place-items-center rounded-full">
-                                                                    <Pill className="size-4" aria-hidden="true" />
-                                                                </span>
-                                                                <div className="min-w-0">
-                                                                    <p className="text-xs font-bold">{item.namaObat}</p>
-                                                                    <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">
-                                                                        {[item.dosis, item.frekuensi, item.durasi].filter(Boolean).join(' · ')}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="mt-2.5 grid grid-cols-2 gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    aria-pressed={catatanItem.status === 'DIBERIKAN'}
-                                                                    onClick={() =>
-                                                                        ubahCatatanObat(item.id, {
-                                                                            status: 'DIBERIKAN',
-                                                                            waktu: catatanItem.waktu || new Date().toTimeString().slice(0, 5),
-                                                                        })
-                                                                    }
-                                                                    className={cn(
-                                                                        'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-[10px] font-semibold transition-colors',
-                                                                        catatanItem.status === 'DIBERIKAN'
-                                                                            ? 'border-tk-green-400 bg-tk-green-500/15 text-tk-green-500 dark:text-tk-accent'
-                                                                            : 'border-[var(--tk-glass-border)] text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
-                                                                    )}
-                                                                >
-                                                                    <CheckCircle2 className="size-3.5" aria-hidden="true" />
-                                                                    Sudah diberikan
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    aria-pressed={catatanItem.status === 'BELUM_TERSEDIA'}
-                                                                    onClick={() => ubahCatatanObat(item.id, { status: 'BELUM_TERSEDIA' })}
-                                                                    className={cn(
-                                                                        'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-[10px] font-semibold transition-colors',
-                                                                        catatanItem.status === 'BELUM_TERSEDIA'
-                                                                            ? 'border-tk-warning bg-tk-warning/15 text-tk-warning'
-                                                                            : 'border-[var(--tk-glass-border)] text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
-                                                                    )}
-                                                                >
-                                                                    <AlertTriangle className="size-3.5" aria-hidden="true" />
-                                                                    Belum tersedia
-                                                                </button>
-                                                            </div>
-
-                                                            {catatanItem.status === 'DIBERIKAN' && (
-                                                                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                                                                    <label className="text-[10px] font-semibold">
-                                                                        Waktu diberikan
-                                                                        <Input
-                                                                            type="time"
-                                                                            value={catatanItem.waktu}
-                                                                            onChange={(event) =>
-                                                                                ubahCatatanObat(item.id, { waktu: event.target.value })
-                                                                            }
-                                                                            className={cn(inputClass, 'mt-1 h-9 text-xs')}
-                                                                        />
-                                                                    </label>
-                                                                    <label className="text-[10px] font-semibold">
-                                                                        Catatan
-                                                                        <Input
-                                                                            value={catatanItem.catatan}
-                                                                            onChange={(event) =>
-                                                                                ubahCatatanObat(item.id, { catatan: event.target.value })
-                                                                            }
-                                                                            placeholder="Contoh: diberikan setelah makan"
-                                                                            className={cn(inputClass, 'mt-1 h-9 text-xs')}
-                                                                        />
-                                                                    </label>
-                                                                </div>
-                                                            )}
-
-                                                            {catatanItem.status === 'BELUM_TERSEDIA' && (
-                                                                <label className="mt-2 block text-[10px] font-semibold">
-                                                                    Alasan / rencana
-                                                                    <Input
-                                                                        value={catatanItem.catatan}
-                                                                        onChange={(event) =>
-                                                                            ubahCatatanObat(item.id, { catatan: event.target.value })
-                                                                        }
-                                                                        placeholder="Contoh: stok habis, dijadwalkan ambil besok"
-                                                                        className={cn(inputClass, 'mt-1 h-9 text-xs')}
-                                                                    />
-                                                                </label>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            <InputError message={errors.obat} className="text-tk-danger mt-1.5 text-[10px]" />
-                                        </fieldset>
-                                    )}
-
-                                    <div>
-                                        <label htmlFor="tanggal" className="text-[11px] font-bold">
-                                            Tanggal kontrol <span className="text-tk-danger">*</span>
-                                        </label>
-                                        <Input
-                                            id="tanggal"
-                                            type="date"
-                                            value={tanggal}
-                                            onChange={(event) => {
-                                                setTanggal(event.target.value);
-                                                setErrors((previous) => ({ ...previous, tanggal: undefined }));
-                                            }}
-                                            aria-invalid={Boolean(errors.tanggal)}
-                                            className={cn(inputClass, 'mt-2')}
-                                        />
-                                        <InputError message={errors.tanggal} className="text-tk-danger mt-1.5 text-[10px]" />
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="mt-4">
-                                <label htmlFor="catatan" className="text-[11px] font-bold">
-                                    Catatan tindak lanjut <span className="text-tk-danger">*</span>
-                                </label>
-                                <textarea
-                                    id="catatan"
-                                    rows={4}
-                                    value={catatan}
-                                    onChange={(event) => {
-                                        setCatatan(event.target.value);
-                                        setErrors((previous) => ({ ...previous, catatan: undefined }));
-                                    }}
-                                    aria-invalid={Boolean(errors.catatan)}
-                                    placeholder={
-                                        rujuk
-                                            ? 'Contoh: Rujukan dijadwalkan dengan kapal cepat pukul 07.00. Keluarga sudah dihubungi.'
-                                            : 'Contoh: Pasien diberikan edukasi diet dan obat. Kontrol ulang minggu depan.'
-                                    }
-                                    className={cn(textareaClass, errors.catatan && 'border-tk-danger focus:ring-tk-danger/30')}
-                                />
-                                <InputError message={errors.catatan} className="text-tk-danger mt-1.5 text-[10px]" />
-                            </div>
-                        </section>
-
-                        <section aria-labelledby="konfirmasi-tindak-lanjut" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
-                            <div className="flex items-start gap-3">
-                                <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-9 shrink-0 place-items-center rounded-full">
-                                    <ShieldCheck className="size-4" aria-hidden="true" />
-                                </span>
-                                <div>
-                                    <h2 id="konfirmasi-tindak-lanjut" className="text-[15px] font-bold">
-                                        Konfirmasi
-                                    </h2>
-                                    <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--tk-muted)]">
-                                        Pastikan tindak lanjut sudah dijelaskan kepada pasien atau keluarganya.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <label className="mt-4 flex items-start gap-3 rounded-2xl bg-[var(--tk-page-alt)] p-4">
-                                <Checkbox
-                                    checked={konfirmasi}
-                                    onCheckedChange={(checked) => {
-                                        setKonfirmasi(checked === true);
-                                        setErrors((previous) => ({ ...previous, konfirmasi: undefined }));
-                                    }}
-                                    aria-invalid={Boolean(errors.konfirmasi)}
-                                    className="data-[state=checked]:border-tk-green-500 data-[state=checked]:bg-tk-green-500 border-[var(--tk-glass-border)] data-[state=checked]:text-white"
-                                />
-                                <span className="text-[11px] leading-relaxed text-[var(--tk-muted)]">
-                                    Saya sudah menjelaskan {rujuk ? 'proses rujukan' : 'rencana perawatan dan jadwal kontrol'} kepada pasien atau
-                                    pendampingnya.
-                                </span>
-                            </label>
-                            <InputError message={errors.konfirmasi} className="text-tk-danger mt-2 text-[10px]" />
-
-                            <div className="mt-4 grid gap-2 sm:flex">
-                                <button
-                                    type="submit"
-                                    className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-xs font-bold transition-colors"
-                                >
-                                    <Save className="size-4" aria-hidden="true" />
-                                    {tersimpan ? 'Perbarui tindak lanjut' : 'Simpan tindak lanjut'}
-                                </button>
-                                <Link
-                                    href={`/perawat/konsultasi/${data.id}`}
-                                    className="inline-flex min-h-12 items-center justify-center rounded-full border border-[var(--tk-glass-border)] px-5 text-xs font-semibold text-[var(--tk-text)] transition-colors hover:bg-[var(--tk-page-alt)]"
-                                >
-                                    Batal
-                                </Link>
-                            </div>
-
-                            {tersimpan && (
-                                <p className="mt-3 flex items-start gap-1.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                    <Info className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                                    Catatan sebelumnya tersimpan di perangkat ini dan akan diperbarui saat Anda menyimpan ulang.
-                                </p>
-                            )}
-                        </section>
-                    </form>
                 </div>
 
                 <aside className="grid content-start gap-5 lg:sticky lg:top-6 lg:self-start">
-                    <section aria-labelledby="pasien-tindak-lanjut" className={cn('rounded-[24px] p-5', glass)}>
-                        <div className="flex items-center gap-3">
-                            <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-12 shrink-0 place-items-center rounded-2xl text-sm font-extrabold">
-                                {inisial(data.pasien.nama)}
-                            </span>
-                            <div className="min-w-0">
-                                <p id="pasien-tindak-lanjut" className="truncate text-sm font-bold">
-                                    {data.pasien.nama}
-                                </p>
-                                <p className="text-[10px] text-[var(--tk-muted)]">
-                                    {data.pasien.usia} tahun · {data.pasien.jenisKelamin === 'P' ? 'Perempuan' : 'Laki-laki'}
-                                </p>
-                                <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[var(--tk-muted)]">
-                                    <Phone className="size-3 shrink-0" aria-hidden="true" />
-                                    {data.pasien.telepon}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="mt-4 grid gap-2 rounded-2xl bg-[var(--tk-page-alt)] p-3 text-[10px] text-[var(--tk-muted)]">
-                            <p className="flex items-center gap-1.5">
-                                <FileText className="size-3 shrink-0" aria-hidden="true" />
-                                {data.pasien.noRm} · {data.pasien.sumber}
-                            </p>
-                            <p className="flex items-start gap-1.5">
-                                <MapPin className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                                {data.pasien.alamat}
-                            </p>
-                        </div>
-                    </section>
-
-                    {data.skrining && (
-                        <section aria-labelledby="skrining-tindak-lanjut" className={cn('rounded-[24px] p-5', glass)}>
-                            <div className="flex items-center justify-between gap-2">
-                                <h2 id="skrining-tindak-lanjut" className="text-[15px] font-bold">
-                                    Ringkasan skrining
-                                </h2>
-                                {data.skrining.tandaBahaya ? (
-                                    <span className="bg-tk-danger/15 text-tk-danger inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold">
-                                        <AlertTriangle className="size-3" aria-hidden="true" />
-                                        Tanda bahaya
-                                    </span>
-                                ) : (
-                                    <span className="bg-tk-success/15 text-tk-success inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold">
-                                        <ShieldCheck className="size-3" aria-hidden="true" />
-                                        Stabil
-                                    </span>
-                                )}
-                            </div>
-
-                            <dl className="mt-3 grid grid-cols-2 gap-2">
-                                {[
-                                    {
-                                        label: 'Tekanan darah',
-                                        nilai: `${data.skrining.sistol}/${data.skrining.diastol}`,
-                                        satuan: 'mmHg',
-                                        icon: Activity,
-                                    },
-                                    { label: 'Suhu', nilai: angkaDesimal(data.skrining.suhu), satuan: '°C', icon: Thermometer },
-                                    { label: 'Nadi', nilai: String(data.skrining.nadi), satuan: 'bpm', icon: HeartPulse },
-                                    { label: 'SpO₂', nilai: String(data.skrining.spo2), satuan: '%', icon: Wind },
-                                    { label: 'Berat', nilai: String(data.skrining.beratBadan), satuan: 'kg', icon: Scale },
-                                    { label: 'Tinggi', nilai: String(data.skrining.tinggiBadan), satuan: 'cm', icon: Ruler },
-                                ].map(({ label, nilai, satuan, icon: Icon }) => (
-                                    <div key={label} className="rounded-xl bg-[var(--tk-page-alt)] px-3 py-2">
-                                        <dt className="flex items-center gap-1 text-[10px] text-[var(--tk-muted)]">
-                                            <Icon className="size-3" aria-hidden="true" />
-                                            {label}
-                                        </dt>
-                                        <dd className="mt-0.5 text-xs font-bold">
-                                            {nilai} <span className="text-[10px] font-semibold text-[var(--tk-muted)]">{satuan}</span>
-                                        </dd>
-                                    </div>
-                                ))}
-                            </dl>
-
-                            <p className="mt-3 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                <span className="font-bold text-[var(--tk-text)]">Catatan perawat: </span>
-                                {data.skrining.catatan}
-                            </p>
-                        </section>
-                    )}
-
-                    <section aria-labelledby="dampak-tindak-lanjut" className={cn('rounded-[24px] p-5', glass)}>
-                        <h2 id="dampak-tindak-lanjut" className="text-[15px] font-bold">
-                            {rujuk ? 'Estimasi biaya' : 'Dampak tindakan'}
+                    <section className={cn('rounded-[24px] p-5', glass)} aria-labelledby="kontak-pasien">
+                        <h2 id="kontak-pasien" className="text-[15px] font-bold">
+                            Kontak pasien
                         </h2>
-
-                        {rujuk ? (
-                            <div className="mt-3">
-                                <p className="text-[32px] leading-none font-semibold tracking-[-0.02em]">{formatRupiah(Number(biaya) || 0)}</p>
-                                <p className="mt-2 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                    Perkiraan biaya rujukan dengan {transport.toLowerCase()} ke {data.faskes}. Biaya final mengikuti fasilitas tujuan.
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="mt-3">
-                                <p className="text-tk-success text-[32px] leading-none font-semibold tracking-[-0.02em]">
-                                    {formatRupiah(biayaKapal)}
-                                </p>
-                                <p className="mt-2 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                    Estimasi biaya perjalanan yang terhindarkan, setara {jamPerjalanan} jam pulang-pergi.
-                                </p>
-                            </div>
-                        )}
-
-                        <div className="mt-3 flex items-start gap-2 rounded-2xl bg-[var(--tk-page-alt)] p-3 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                            {rujuk
-                                ? 'Data biaya dipakai untuk memantau beban rujukan pada dasbor.'
-                                : 'Kasus ini masuk hitungan rujukan terhindarkan pada dasbor.'}
-                        </div>
+                        <ul className="mt-3 grid gap-2.5 text-[11px]">
+                            <li className="flex items-center gap-2">
+                                <UserRound className="size-3.5 shrink-0 text-[var(--tk-muted)]" aria-hidden="true" />
+                                {pasien.sumber}
+                            </li>
+                            <li className="flex items-center gap-2">
+                                <Phone className="size-3.5 shrink-0 text-[var(--tk-muted)]" aria-hidden="true" />
+                                {pasien.telepon}
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <MapPin className="mt-0.5 size-3.5 shrink-0 text-[var(--tk-muted)]" aria-hidden="true" />
+                                {pasien.alamat}
+                            </li>
+                            <li className="flex items-center gap-2">
+                                <CalendarDays className="size-3.5 shrink-0 text-[var(--tk-muted)]" aria-hidden="true" />
+                                Konsultasi: {konsultasi.tanggal ?? '-'}
+                            </li>
+                        </ul>
                     </section>
 
-                    <section aria-labelledby="dokter-hasil" className={cn('rounded-[24px] p-5', glass)}>
-                        <p id="dokter-hasil" className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">
-                            Dokter pemberi hasil
-                        </p>
-                        <div className="mt-3 flex items-center gap-3">
-                            <span className="text-tk-mint grid size-11 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,#0F4A40_0%,#2E8B6A_55%,#9FE3B5_100%)] text-[11px] font-extrabold">
-                                {inisial(data.dokter, true)}
-                            </span>
-                            <div className="min-w-0">
-                                <p className="text-xs font-bold">{data.dokter}</p>
-                                <p className="text-tk-green-500 dark:text-tk-accent text-[10px] font-semibold">Spesialis {data.spesialisasi}</p>
-                                <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[var(--tk-muted)]">
-                                    <CalendarDays className="size-3 shrink-0" aria-hidden="true" />
-                                    {data.jadwal}
-                                </p>
-                            </div>
-                        </div>
-                    </section>
-
-                    {!rujuk && (
-                        <section aria-label="Pengingat kontrol" className={cn('flex items-start gap-3 rounded-[20px] p-4', glass)}>
-                            <span className="bg-tk-warning/15 text-tk-warning grid size-9 shrink-0 place-items-center rounded-full">
-                                <Clock className="size-4" aria-hidden="true" />
-                            </span>
-                            <div>
-                                <p className="text-[11px] font-bold">Jangan lupa kontrol</p>
-                                <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                    Hubungi pasien jika kontrol terlewat. Pasien tanpa akun tetap bisa dihubungi lewat telepon atau kunjungan rumah.
-                                </p>
-                            </div>
-                        </section>
-                    )}
-
-                    {rujuk && (
-                        <section aria-label="Persiapan rujukan" className={cn('rounded-[20px] p-4', glass)}>
-                            <div className="flex items-start gap-3">
-                                <span className="bg-tk-warning/15 text-tk-warning grid size-9 shrink-0 place-items-center rounded-full">
-                                    <AlertTriangle className="size-4" aria-hidden="true" />
-                                </span>
-                                <div>
-                                    <p className="text-[11px] font-bold">Persiapan rujukan</p>
-                                    <ul className="mt-1 grid gap-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                        <li>Pastikan kondisi pasien stabil sebelum berangkat.</li>
-                                        <li>Bawa ringkasan skrining dan hasil konsultasi.</li>
-                                        <li>Konfirmasi ketersediaan tempat tidur di RS tujuan.</li>
-                                    </ul>
+                    {skrining && (
+                        <section className={cn('rounded-[24px] p-5', glass)} aria-labelledby="ringkasan-skrining">
+                            <h2 id="ringkasan-skrining" className="text-[15px] font-bold">
+                                Ringkasan skrining
+                            </h2>
+                            <dl className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                                <div className="rounded-xl bg-[var(--tk-page-alt)] px-3 py-2">
+                                    <dt className="text-[10px] text-[var(--tk-muted)]">Tekanan darah</dt>
+                                    <dd className="font-bold">
+                                        {skrining.sistol}/{skrining.diastol}
+                                    </dd>
                                 </div>
-                            </div>
+                                <div className="rounded-xl bg-[var(--tk-page-alt)] px-3 py-2">
+                                    <dt className="text-[10px] text-[var(--tk-muted)]">Suhu</dt>
+                                    <dd className="font-bold">{skrining.suhu} °C</dd>
+                                </div>
+                                <div className="rounded-xl bg-[var(--tk-page-alt)] px-3 py-2">
+                                    <dt className="text-[10px] text-[var(--tk-muted)]">Nadi</dt>
+                                    <dd className="font-bold">{skrining.nadi} bpm</dd>
+                                </div>
+                                <div className="rounded-xl bg-[var(--tk-page-alt)] px-3 py-2">
+                                    <dt className="text-[10px] text-[var(--tk-muted)]">SpO₂</dt>
+                                    <dd className="font-bold">{skrining.spo2}%</dd>
+                                </div>
+                            </dl>
+                            <p className="mt-2 text-[10px] text-[var(--tk-muted)]">
+                                {skrining.perawat} · {skrining.waktu}
+                            </p>
                         </section>
                     )}
-
-                    <section className={cn('flex items-start gap-3 rounded-[20px] p-4', glass)}>
-                        <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-9 shrink-0 place-items-center rounded-full">
-                            <Wifi className="size-4" aria-hidden="true" />
-                        </span>
-                        <p className="text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                            Catatan tersimpan lokal saat offline dan dikirim otomatis ketika sinyal kembali. Data fiktif untuk prototipe TeleKarang.
-                        </p>
-                    </section>
-
-                    <section className={cn('flex items-start gap-3 rounded-[20px] p-4', glass)}>
-                        <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-9 shrink-0 place-items-center rounded-full">
-                            <UserRound className="size-4" aria-hidden="true" />
-                        </span>
-                        <p className="text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                            Tindak lanjut dicatat oleh perawat. Keputusan rujuk/tidak sepenuhnya mengikuti hasil dokter spesialis.
-                        </p>
-                    </section>
                 </aside>
             </div>
         </PerawatAppLayout>

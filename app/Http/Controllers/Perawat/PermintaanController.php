@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Perawat;
 
 use App\Http\Controllers\Controller;
 use App\Models\Konsultasi;
+use App\Support\TanggalIndonesia;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -11,44 +12,24 @@ use Inertia\Response;
 class PermintaanController extends Controller
 {
     /**
-     * Status konsultasi yang ditampilkan pada antrean perawat.
+     * Status konsultasi yang masih perlu dipantau perawat.
      *
      * @var list<string>
      */
     private const STATUS_ANTREAN = [
         'MENUNGGU_SKRINING',
         'SKRINING_SELESAI',
+        'MENUNGGU_PEMILIHAN_SPESIALIS',
         'MENUNGGU_SPESIALIS',
+        'DIKONFIRMASI',
+        'BERLANGSUNG',
         'KEDALUWARSA',
-    ];
-
-    /**
-     * @var list<string>
-     */
-    private const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-
-    /**
-     * @var list<string>
-     */
-    private const BULAN = [
-        1 => 'Januari',
-        2 => 'Februari',
-        3 => 'Maret',
-        4 => 'April',
-        5 => 'Mei',
-        6 => 'Juni',
-        7 => 'Juli',
-        8 => 'Agustus',
-        9 => 'September',
-        10 => 'Oktober',
-        11 => 'November',
-        12 => 'Desember',
     ];
 
     public function __invoke(): Response
     {
         $permintaan = Konsultasi::query()
-            ->with(['pasien', 'dokterSpesialis', 'skrining', 'pembuat'])
+            ->with(['pasien', 'dokterSpesialis', 'skrining', 'pembuat', 'jadwal'])
             ->whereIn('status', self::STATUS_ANTREAN)
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -61,9 +42,10 @@ class PermintaanController extends Controller
                 'nik' => $konsultasi->pasien?->nik ?? '-',
                 'waktuMasuk' => $this->formatWaktuMasuk($konsultasi->created_at),
                 'keluhan' => $konsultasi->keluhan,
-                'spesialisasi' => $konsultasi->dokterSpesialis?->spesialisasi ?? 'Spesialis',
-                'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter spesialis',
-                'jadwal' => $this->formatTanggal($konsultasi->tanggal).' · '.$konsultasi->tanggal->format('H.i').' WIT',
+                'spesialisasi' => $konsultasi->dokterSpesialis?->spesialisasi ?? 'Belum dipilih',
+                'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Belum dipilih',
+                'jadwal' => $this->formatJadwal($konsultasi),
+                'tanggalSkrining' => TanggalIndonesia::singkat($konsultasi->tanggal_skrining),
                 'status' => $konsultasi->status,
                 'prioritas' => $konsultasi->prioritasKartu(),
                 'sumber' => $konsultasi->pembuat?->role === 'pasien' ? 'Akun pasien' : 'Didaftarkan perawat',
@@ -78,12 +60,26 @@ class PermintaanController extends Controller
                 'total' => $koleksi->count(),
                 'menungguSkrining' => $koleksi->where('status', 'MENUNGGU_SKRINING')->count(),
                 'skriningSelesai' => $koleksi->where('status', 'SKRINING_SELESAI')->count(),
-                'menungguSpesialis' => $koleksi->where('status', 'MENUNGGU_SPESIALIS')->count(),
+                'menungguSpesialis' => $koleksi->where('status', 'MENUNGGU_PEMILIHAN_SPESIALIS')->count()
+                    + $koleksi->where('status', 'MENUNGGU_SPESIALIS')->count(),
                 'kedaluwarsa' => $koleksi->where('status', 'KEDALUWARSA')->count(),
                 'prioritasDarurat' => $koleksi->where('prioritas', 'darurat')->count(),
             ],
             'permintaan' => $permintaan,
         ]);
+    }
+
+    private function formatJadwal(Konsultasi $konsultasi): string
+    {
+        if ($konsultasi->jadwal !== null) {
+            return $konsultasi->jadwal->hari.' · '.substr($konsultasi->jadwal->jam_mulai, 0, 5).' WIT';
+        }
+
+        if ($konsultasi->tanggal !== null) {
+            return TanggalIndonesia::singkat($konsultasi->tanggal).' · '.$konsultasi->tanggal->format('H.i').' WIT';
+        }
+
+        return 'Belum dijadwalkan';
     }
 
     private function formatWaktuMasuk(Carbon $tanggal): string
@@ -96,14 +92,6 @@ class PermintaanController extends Controller
             return 'Kemarin, '.$tanggal->format('H.i');
         }
 
-        return $tanggal->format('d').' '.substr(self::BULAN[(int) $tanggal->format('n')], 0, 3).' '.$tanggal->format('Y').', '.$tanggal->format('H.i');
-    }
-
-    private function formatTanggal(Carbon $tanggal): string
-    {
-        return self::HARI[(int) $tanggal->format('w')]
-            .', '.$tanggal->format('j')
-            .' '.self::BULAN[(int) $tanggal->format('n')]
-            .' '.$tanggal->format('Y');
+        return TanggalIndonesia::singkat($tanggal).', '.$tanggal->format('H.i');
     }
 }

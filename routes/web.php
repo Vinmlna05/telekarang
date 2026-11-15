@@ -7,11 +7,11 @@ use App\Http\Controllers\Admin\Icd10Controller as AdminIcd10Controller;
 use App\Http\Controllers\Admin\LogController as AdminLogController;
 use App\Http\Controllers\Admin\PenggunaController as AdminPenggunaController;
 use App\Http\Controllers\Dokter\HasilController as DokterHasilController;
+use App\Http\Controllers\Dokter\KeputusanController as DokterKeputusanController;
 use App\Http\Controllers\Dokter\ReviewController as DokterReviewController;
 use App\Http\Controllers\Dokter\ReviewDetailController as DokterReviewDetailController;
 use App\Http\Controllers\Pasien\AkunController as PasienAkunController;
 use App\Http\Controllers\Pasien\BerandaController;
-use App\Http\Controllers\Pasien\JadwalController as PasienJadwalController;
 use App\Http\Controllers\Pasien\KonsultasiBaruController as PasienKonsultasiBaruController;
 use App\Http\Controllers\Pasien\KonsultasiDetailController as PasienKonsultasiDetailController;
 use App\Http\Controllers\Pasien\ProfilController as PasienProfilController;
@@ -51,10 +51,6 @@ Route::middleware(['auth'])->group(function () {
     Route::get('pasien', BerandaController::class)
         ->middleware('role:pasien')
         ->name('pasien.beranda');
-
-    Route::get('pasien/jadwal', PasienJadwalController::class)
-        ->middleware('role:pasien')
-        ->name('pasien.jadwal');
 
     Route::get('pasien/konsultasi/baru', PasienKonsultasiBaruController::class)
         ->middleware('role:pasien')
@@ -114,6 +110,16 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:perawat')
         ->name('perawat.konsultasi.detail');
 
+    Route::post('perawat/konsultasi/{konsultasi}/spesialis', [PerawatKonsultasiController::class, 'storeSpesialis'])
+        ->whereNumber('konsultasi')
+        ->middleware('role:perawat')
+        ->name('perawat.konsultasi.spesialis');
+
+    Route::post('perawat/konsultasi/{konsultasi}/pesan', [PerawatKonsultasiController::class, 'storePesan'])
+        ->whereNumber('konsultasi')
+        ->middleware('role:perawat')
+        ->name('perawat.konsultasi.pesan');
+
     Route::get('perawat/tindak-lanjut/{konsultasi}', PerawatTindakLanjutController::class)
         ->whereNumber('konsultasi')
         ->middleware('role:perawat')
@@ -158,6 +164,11 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:dokter_umum')
         ->name('dokter.review.detail');
 
+    Route::post('dokter/review/{konsultasi}/keputusan', DokterKeputusanController::class)
+        ->whereNumber('konsultasi')
+        ->middleware('role:dokter_umum')
+        ->name('dokter.review.keputusan');
+
     Route::get('dokter/hasil/{konsultasi}', DokterHasilController::class)
         ->whereNumber('konsultasi')
         ->middleware('role:dokter_umum')
@@ -171,19 +182,48 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:spesialis')
         ->name('spesialis.jadwal');
 
+    Route::post('spesialis/jadwal', [SpesialisJadwalController::class, 'store'])
+        ->middleware('role:spesialis')
+        ->name('spesialis.jadwal.store');
+
+    Route::patch('spesialis/jadwal/{jadwal}', [SpesialisJadwalController::class, 'update'])
+        ->whereNumber('jadwal')
+        ->middleware('role:spesialis')
+        ->name('spesialis.jadwal.update');
+
+    Route::delete('spesialis/jadwal/{jadwal}', [SpesialisJadwalController::class, 'destroy'])
+        ->whereNumber('jadwal')
+        ->middleware('role:spesialis')
+        ->name('spesialis.jadwal.destroy');
+
     Route::get('spesialis/permintaan', SpesialisPermintaanController::class)
         ->middleware('role:spesialis')
         ->name('spesialis.permintaan');
+
+    Route::post('spesialis/permintaan/{konsultasi}/keputusan', [SpesialisPermintaanController::class, 'putuskan'])
+        ->whereNumber('konsultasi')
+        ->middleware('role:spesialis')
+        ->name('spesialis.permintaan.keputusan');
 
     Route::get('spesialis/konsultasi/{konsultasi}', SpesialisKonsultasiController::class)
         ->whereNumber('konsultasi')
         ->middleware('role:spesialis')
         ->name('spesialis.konsultasi.detail');
 
+    Route::post('spesialis/konsultasi/{konsultasi}/pesan', [SpesialisKonsultasiController::class, 'storePesan'])
+        ->whereNumber('konsultasi')
+        ->middleware('role:spesialis')
+        ->name('spesialis.konsultasi.pesan');
+
     Route::get('spesialis/hasil/{konsultasi}', SpesialisHasilController::class)
         ->whereNumber('konsultasi')
         ->middleware('role:spesialis')
         ->name('spesialis.hasil');
+
+    Route::post('spesialis/hasil/{konsultasi}', [SpesialisHasilController::class, 'store'])
+        ->whereNumber('konsultasi')
+        ->middleware('role:spesialis')
+        ->name('spesialis.hasil.store');
 
     Route::get('admin', AdminBerandaController::class)
         ->middleware('role:admin')
@@ -245,6 +285,10 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('admin/pengguna/{user}', [AdminPenggunaController::class, 'update'])
         ->middleware('role:admin')
         ->name('admin.pengguna.update');
+
+    Route::delete('admin/pengguna/{user}', [AdminPenggunaController::class, 'destroy'])
+        ->middleware('role:admin')
+        ->name('admin.pengguna.destroy');
 });
 
 require __DIR__.'/settings.php';

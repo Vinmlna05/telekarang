@@ -5,30 +5,19 @@ namespace App\Http\Controllers\Pasien;
 use App\Http\Controllers\Controller;
 use App\Models\Konsultasi;
 use App\Models\Pasien;
+use App\Support\TanggalIndonesia;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class RiwayatController extends Controller
 {
     /**
-     * @var array<int, string>
+     * Status akhir yang ditampilkan sebagai riwayat konsultasi.
+     *
+     * @var list<string>
      */
-    private const BULAN_SINGKAT = [
-        1 => 'Jan',
-        2 => 'Feb',
-        3 => 'Mar',
-        4 => 'Apr',
-        5 => 'Mei',
-        6 => 'Jun',
-        7 => 'Jul',
-        8 => 'Agu',
-        9 => 'Sep',
-        10 => 'Okt',
-        11 => 'Nov',
-        12 => 'Des',
-    ];
+    private const STATUS_RIWAYAT = ['SELESAI', 'DIRUJUK', 'DITANGANI_PUSKESMAS'];
 
     /**
      * Tampilkan riwayat konsultasi selesai milik pasien yang sedang login.
@@ -45,23 +34,22 @@ class RiwayatController extends Controller
             $riwayat = Konsultasi::query()
                 ->with(['dokterSpesialis', 'hasil.icd10'])
                 ->where('pasien_id', $pasien->id)
-                ->where('status', 'SELESAI')
-                ->whereHas('hasil')
-                ->orderByDesc('tanggal')
+                ->whereIn('status', self::STATUS_RIWAYAT)
+                ->orderByDesc('updated_at')
                 ->get()
                 ->map(fn (Konsultasi $konsultasi) => [
                     'id' => $konsultasi->id,
-                    'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter spesialis',
-                    'spesialisasi' => $konsultasi->dokterSpesialis?->spesialisasi ?? 'Spesialis',
+                    'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter belum ditentukan',
+                    'spesialisasi' => $konsultasi->dokterSpesialis?->spesialisasi ?? 'Penanganan puskesmas',
                     'faskes' => $konsultasi->dokterSpesialis?->faskes ?? 'Puskesmas Pulau Karang',
-                    'tanggalSingkat' => $this->formatTanggalSingkat($konsultasi->tanggal),
+                    'tanggalSingkat' => TanggalIndonesia::singkat($konsultasi->tanggal ?? $konsultasi->tanggal_skrining),
                     'mode' => $konsultasi->mode,
                     'status' => $konsultasi->status,
                     'keluhan' => $konsultasi->keluhan,
                     'hasil' => [
                         'icd10Kode' => $konsultasi->hasil?->icd10_kode ?? '-',
-                        'icd10Nama' => $konsultasi->hasil?->icd10?->nama_diagnosis ?? 'Belum ada diagnosis',
-                        'keputusanRujuk' => (bool) $konsultasi->hasil?->keputusan_rujuk,
+                        'icd10Nama' => $konsultasi->hasil?->icd10?->nama_diagnosis ?? $this->diagnosisFallback($konsultasi),
+                        'keputusanRujuk' => $this->keputusanRujuk($konsultasi),
                     ],
                 ])
                 ->all();
@@ -72,10 +60,25 @@ class RiwayatController extends Controller
         ]);
     }
 
-    private function formatTanggalSingkat(Carbon $tanggal): string
+    private function diagnosisFallback(Konsultasi $konsultasi): string
     {
-        return $tanggal->format('d')
-            .' '.self::BULAN_SINGKAT[(int) $tanggal->format('n')]
-            .' '.$tanggal->format('Y');
+        return match ($konsultasi->status) {
+            'DIRUJUK' => 'Dirujuk langsung ke RS',
+            'DITANGANI_PUSKESMAS' => 'Ditangani di Puskesmas Pulau Karang',
+            default => 'Belum ada diagnosis',
+        };
+    }
+
+    private function keputusanRujuk(Konsultasi $konsultasi): bool
+    {
+        if ($konsultasi->status === 'DIRUJUK') {
+            return true;
+        }
+
+        if ($konsultasi->status === 'DITANGANI_PUSKESMAS') {
+            return false;
+        }
+
+        return (bool) $konsultasi->hasil?->keputusan_rujuk;
     }
 }

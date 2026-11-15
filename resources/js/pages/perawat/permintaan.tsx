@@ -22,7 +22,14 @@ import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
 import { type SharedData } from '@/types';
 
-type StatusPermintaan = 'MENUNGGU_SKRINING' | 'SKRINING_SELESAI' | 'MENUNGGU_SPESIALIS' | 'KEDALUWARSA';
+type StatusPermintaan =
+    | 'MENUNGGU_SKRINING'
+    | 'SKRINING_SELESAI'
+    | 'MENUNGGU_PEMILIHAN_SPESIALIS'
+    | 'MENUNGGU_SPESIALIS'
+    | 'DIKONFIRMASI'
+    | 'BERLANGSUNG'
+    | 'KEDALUWARSA';
 type StatusFilter = 'SEMUA' | StatusPermintaan;
 type PrioritasKartu = 'darurat' | 'sedang' | null;
 
@@ -40,6 +47,7 @@ interface PermintaanItem {
     status: StatusPermintaan;
     prioritas: PrioritasKartu;
     sumber: string;
+    tanggalSkrining: string | null;
 }
 
 interface PermintaanPerawatProps {
@@ -67,6 +75,17 @@ const statusMeta: Record<StatusPermintaan, { label: string; tone: string; icon: 
         icon: ClipboardCheck,
     },
     MENUNGGU_SPESIALIS: { label: 'Menunggu spesialis', tone: 'bg-tk-info/15 text-tk-info', icon: Stethoscope },
+    MENUNGGU_PEMILIHAN_SPESIALIS: { label: 'Pilih dokter & slot', tone: 'bg-tk-info/15 text-tk-info', icon: Stethoscope },
+    DIKONFIRMASI: {
+        label: 'Dikonfirmasi',
+        tone: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
+        icon: CheckCircle2,
+    },
+    BERLANGSUNG: {
+        label: 'Berlangsung',
+        tone: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
+        icon: Stethoscope,
+    },
     KEDALUWARSA: { label: 'Kedaluwarsa', tone: 'bg-tk-danger/10 text-tk-danger', icon: AlertTriangle },
 };
 
@@ -91,7 +110,10 @@ const filterStatus: Array<{ key: StatusFilter; label: string }> = [
     { key: 'SEMUA', label: 'Semua' },
     { key: 'MENUNGGU_SKRINING', label: 'Menunggu skrining' },
     { key: 'SKRINING_SELESAI', label: 'Skrining selesai' },
+    { key: 'MENUNGGU_PEMILIHAN_SPESIALIS', label: 'Pilih dokter & slot' },
     { key: 'MENUNGGU_SPESIALIS', label: 'Menunggu spesialis' },
+    { key: 'DIKONFIRMASI', label: 'Dikonfirmasi' },
+    { key: 'BERLANGSUNG', label: 'Berlangsung' },
     { key: 'KEDALUWARSA', label: 'Kedaluwarsa' },
 ];
 
@@ -128,8 +150,16 @@ function aksiUntuk(item: PermintaanItem): { label: string; href: string; primary
         return { label: 'Isi skrining', href: `/perawat/skrining/${item.id}`, primary: true };
     }
 
+    if (item.status === 'MENUNGGU_PEMILIHAN_SPESIALIS') {
+        return { label: 'Pilih dokter & slot', href: `/perawat/konsultasi/${item.id}`, primary: true };
+    }
+
     if (item.status === 'SKRINING_SELESAI') {
         return { label: 'Lihat skrining', href: `/perawat/konsultasi/${item.id}`, primary: false };
+    }
+
+    if (item.status === 'DIKONFIRMASI' || item.status === 'BERLANGSUNG') {
+        return { label: 'Buka ruang konsultasi', href: `/perawat/konsultasi/${item.id}`, primary: true };
     }
 
     if (item.status === 'MENUNGGU_SPESIALIS') {

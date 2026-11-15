@@ -33,6 +33,13 @@ class Dokter extends Model
     public const STATUS = ['aktif', 'nonaktif'];
 
     /**
+     * Pilihan spesialisasi dokter spesialis.
+     *
+     * @var list<string>
+     */
+    public const SPESIALISASI = ['Anak', 'Penyakit Dalam', 'Kulit', 'Kandungan', 'Bedah', 'Mata', 'THT', 'Saraf', 'Lainnya'];
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -45,6 +52,50 @@ class Dokter extends Model
         'faskes',
         'status',
     ];
+
+    /**
+     * Pastikan akun dokter memiliki profil dokter yang sesuai perannya.
+     */
+    public static function pastikanUntuk(User $user, ?string $spesialisasi = null): ?self
+    {
+        $peran = match ($user->role) {
+            'dokter_umum' => 'umum',
+            'spesialis' => 'spesialis',
+            default => null,
+        };
+
+        if ($peran === null) {
+            return null;
+        }
+
+        $dokter = self::query()->firstOrCreate(
+            ['user_id' => $user->id],
+            [
+                'nama' => $user->name,
+                'peran' => $peran,
+                'spesialisasi' => $peran === 'spesialis' ? $spesialisasi : null,
+                'faskes' => $peran === 'spesialis' ? 'RS Rujukan Daratan' : 'Puskesmas Pulau Karang',
+                'status' => 'aktif',
+            ],
+        );
+
+        $perubahan = [];
+
+        if ($dokter->peran !== $peran) {
+            $perubahan['peran'] = $peran;
+            $perubahan['spesialisasi'] = $peran === 'spesialis'
+                ? ($dokter->spesialisasi ?: $spesialisasi)
+                : null;
+        } elseif ($peran === 'spesialis' && blank($dokter->spesialisasi) && filled($spesialisasi)) {
+            $perubahan['spesialisasi'] = $spesialisasi;
+        }
+
+        if ($perubahan !== []) {
+            $dokter->update($perubahan);
+        }
+
+        return $dokter;
+    }
 
     /**
      * Akun pengguna yang terhubung dengan profil dokter.

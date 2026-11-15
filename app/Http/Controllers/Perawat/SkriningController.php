@@ -84,13 +84,17 @@ class SkriningController extends Controller
                 'noRm' => $pasien?->nomorRekamMedis() ?? '-',
                 'alamat' => $pasien?->alamat ?? '-',
                 'keluhan' => $data->keluhan,
-                'spesialisasi' => $data->dokterSpesialis?->spesialisasi ?? 'Spesialis',
-                'dokter' => $data->dokterSpesialis?->nama ?? 'Dokter spesialis',
-                'jadwal' => $this->formatTanggal($data->tanggal).' · '.$data->tanggal->format('H.i').' WIT',
+                'spesialisasi' => $data->dokterSpesialis?->spesialisasi ?? 'Belum dipilih',
+                'dokter' => $data->dokterSpesialis?->nama ?? 'Belum dipilih',
+                'jadwal' => $data->jadwal !== null
+                    ? $data->jadwal->hari.' · '.substr($data->jadwal->jam_mulai, 0, 5).' WIT'
+                    : ($data->tanggal !== null
+                        ? $this->formatTanggal($data->tanggal).' · '.$data->tanggal->format('H.i').' WIT'
+                        : 'Belum dijadwalkan'),
                 'status' => $data->status,
                 'prioritas' => $data->prioritasKartu(),
                 'sumber' => $data->pembuat?->role === 'pasien' ? 'Akun pasien' : 'Didaftarkan perawat',
-                'waktuMasuk' => $this->formatWaktuMasuk($data->tanggal),
+                'waktuMasuk' => $this->formatWaktuMasuk($data->created_at),
             ],
             'nilaiAwal' => $nilaiAwal,
         ]);

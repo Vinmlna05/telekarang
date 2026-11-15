@@ -5,6 +5,7 @@ import {
     CalendarDays,
     CheckCircle2,
     ChevronRight,
+    Circle,
     Clock,
     Copy,
     ExternalLink,
@@ -81,6 +82,7 @@ interface KonsultasiDetailData {
     keluhan: string;
     skrining: SkriningDetail | null;
     hasil: HasilDetail | null;
+    pesan: PesanKonsultasi[];
 }
 
 interface KonsultasiDetailProps {
@@ -90,6 +92,26 @@ interface KonsultasiDetailProps {
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
 const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77F_100%)]';
 const langkahKonsultasi = ['Permintaan', 'Skrining', 'Review dokter', 'Spesialis', 'Konsultasi', 'Hasil'];
+
+const progresKonsultasi: Record<StatusKonsultasi, { selesai: number; aktif: number | null; gagal?: number; peringatan?: number }> = {
+    MENUNGGU_SKRINING: { selesai: 1, aktif: 1 },
+    SKRINING_SELESAI: { selesai: 2, aktif: 2 },
+    MENUNGGU_PEMILIHAN_SPESIALIS: { selesai: 3, aktif: 3 },
+    MENUNGGU_SPESIALIS: { selesai: 3, aktif: 3 },
+    DIJADWAL_ULANG: { selesai: 3, aktif: 3, peringatan: 3 },
+    DIKONFIRMASI: { selesai: 4, aktif: 4 },
+    BERLANGSUNG: { selesai: 4, aktif: 4 },
+    SELESAI: { selesai: 6, aktif: null },
+    DIRUJUK: { selesai: 6, aktif: null },
+    DITANGANI_PUSKESMAS: { selesai: 6, aktif: null },
+    DITOLAK: { selesai: 3, aktif: null, gagal: 3 },
+    KEDALUWARSA: { selesai: 1, aktif: null, gagal: 1 },
+    DIBATALKAN: { selesai: 0, aktif: null, gagal: 0 },
+};
+
+function sumberFoto(foto: string): string {
+    return foto.startsWith('data:') || foto.startsWith('http') ? foto : `/storage/${foto}`;
+}
 
 const labelPengirim: Record<PengirimPesan, string> = {
     pasien: 'Anda',
@@ -134,7 +156,8 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
     const [tersalin, setTersalin] = useState(false);
 
     const ujungChat = useRef<HTMLDivElement>(null);
-    const semuaPesan = pesanLokal;
+    const semuaPesan = [...data.pesan, ...pesanLokal.filter((lokal) => !data.pesan.some((pesan) => pesan.id === lokal.id))];
+    const progres = progresKonsultasi[data.status];
     const modeLabel = modeKonsultasiLabels[mode];
     const statusLabel = statusKonsultasiLabels[data.status];
     const tautanVideo = `https://meet.jit.si/TeleKarang-${data.nomor}`;
@@ -342,14 +365,60 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
 
                         <div className="p-5 md:p-6">
                             <ol className="grid grid-cols-3 gap-3 sm:grid-cols-6" aria-label="Progres konsultasi">
-                                {langkahKonsultasi.map((langkah) => (
-                                    <li key={langkah} className="flex flex-col items-center gap-1.5 text-center">
-                                        <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-7 place-items-center rounded-full">
-                                            <CheckCircle2 className="size-3.5" aria-hidden="true" />
-                                        </span>
-                                        <span className="text-[9px] leading-tight font-semibold text-[var(--tk-muted)]">{langkah}</span>
-                                    </li>
-                                ))}
+                                {langkahKonsultasi.map((langkah, index) => {
+                                    const selesai = index < progres.selesai;
+                                    const aktif = progres.aktif === index && !selesai;
+                                    const gagal = progres.gagal === index;
+                                    const peringatan = progres.peringatan === index && !gagal;
+
+                                    return (
+                                        <li key={langkah} className="flex flex-col items-center gap-1.5 text-center">
+                                            <span
+                                                aria-label={`${langkah}: ${
+                                                    selesai
+                                                        ? 'selesai'
+                                                        : gagal
+                                                          ? 'terhenti'
+                                                          : peringatan
+                                                            ? 'perlu dijadwalkan ulang'
+                                                            : aktif
+                                                              ? 'sedang berjalan'
+                                                              : 'menunggu'
+                                                }`}
+                                                className={cn(
+                                                    'grid size-7 place-items-center rounded-full',
+                                                    selesai &&
+                                                        'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
+                                                    aktif &&
+                                                        'border-tk-green-500/50 text-tk-green-500 dark:border-tk-accent/60 dark:text-tk-accent border-[1.5px]',
+                                                    peringatan && 'bg-tk-warning/15 text-tk-warning',
+                                                    gagal && 'bg-tk-danger/15 text-tk-danger',
+                                                    !selesai && !aktif && !peringatan && !gagal && 'bg-[var(--tk-page-alt)] text-[var(--tk-muted)]',
+                                                )}
+                                            >
+                                                {selesai ? (
+                                                    <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                                                ) : gagal ? (
+                                                    <X className="size-3.5" aria-hidden="true" />
+                                                ) : aktif || peringatan ? (
+                                                    <Clock className="size-3.5" aria-hidden="true" />
+                                                ) : (
+                                                    <Circle className="size-3" aria-hidden="true" />
+                                                )}
+                                            </span>
+                                            <span
+                                                className={cn(
+                                                    'text-[9px] leading-tight font-semibold',
+                                                    selesai || aktif ? 'text-[var(--tk-text)]' : 'text-[var(--tk-muted)]',
+                                                    peringatan && 'text-tk-warning',
+                                                    gagal && 'text-tk-danger',
+                                                )}
+                                            >
+                                                {langkah}
+                                            </span>
+                                        </li>
+                                    );
+                                })}
                             </ol>
                         </div>
                     </section>
@@ -632,7 +701,7 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
                                                 </p>
                                                 {pesan.foto && (
                                                     <img
-                                                        src={pesan.foto}
+                                                        src={sumberFoto(pesan.foto)}
                                                         alt="Lampiran foto konsultasi"
                                                         className="mt-2 max-h-56 w-full rounded-xl object-cover"
                                                     />

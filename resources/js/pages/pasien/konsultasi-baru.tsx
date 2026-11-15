@@ -1,60 +1,35 @@
-import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, CalendarDays, CheckCircle2, Clock, Info, MapPin, Send, ShieldCheck, Stethoscope, UserRound, Wifi } from 'lucide-react';
+import { Head, Link, router } from '@inertiajs/react';
+import { ArrowLeft, CalendarDays, Clock, Info, Send, ShieldCheck, Stethoscope, UserRound, Wifi } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 
 import InputError from '@/components/input-error';
 import { Checkbox } from '@/components/ui/checkbox';
-import { spesialisasiFilters, type DokterSpesialis, type Spesialisasi, type StatusJadwal } from '@/data/jadwal-dokter';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { cn } from '@/lib/utils';
-import { type SharedData } from '@/types';
 
-interface KonsultasiBaruProps {
-    dokter: DokterSpesialis[];
-    dokterAwal: number | null;
-    jadwalAwal: string;
+interface TanggalSkrining {
+    value: string;
+    label: string;
+    singkat: string;
 }
 
-type FormErrors = Partial<Record<'dokter' | 'slot' | 'keluhan' | 'persetujuan', string>>;
+interface KonsultasiBaruProps {
+    tanggalTersedia: TanggalSkrining[];
+    tanggalAwal: string | null;
+}
+
+type FormErrors = Partial<Record<'tanggal_skrining' | 'keluhan' | 'persetujuan', string>>;
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
-
-const statusMeta: Record<StatusJadwal, { label: string; tone: string }> = {
-    tersedia: {
-        label: 'Tersedia',
-        tone: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
-    },
-    terisi: {
-        label: 'Slot penuh',
-        tone: 'bg-tk-warning/15 text-tk-warning',
-    },
-    libur: {
-        label: 'Libur',
-        tone: 'bg-[var(--tk-page-alt)] text-[var(--tk-muted)]',
-    },
-};
 
 const durasiKeluhan = ['Kurang dari 1 hari', '1–3 hari', '4–7 hari', 'Lebih dari 1 minggu'];
 
 const langkahSetelahKirim = [
-    'Datang ke Puskesmas Pulau Karang untuk skrining perawat.',
-    'Dokter umum mereview hasil skrining sebelum diteruskan.',
-    'Dokter spesialis mengonfirmasi jadwal dan mode konsultasi.',
-    'Hasil, saran, dan keputusan rujukan muncul di riwayat konsultasi.',
+    'Datang ke Puskesmas Pulau Karang pada tanggal skrining yang dipilih.',
+    'Perawat mengisi tanda vital dan keluhan Anda.',
+    'Dokter umum memutuskan penanganan: konsultasi spesialis, rujuk, atau tangani di puskesmas.',
+    'Bila perlu spesialis, perawat memilih dokter dan slot jadwal untuk Anda.',
 ];
-
-function inisial(nama: string, abaikanGelar = false): string {
-    const namaBersih = abaikanGelar ? nama.replace(/^dr\.?\s+/i, '') : nama;
-
-    return (
-        namaBersih
-            .split(' ')
-            .filter(Boolean)
-            .slice(0, 2)
-            .map((bagian) => bagian.charAt(0).toUpperCase())
-            .join('') || 'PS'
-    );
-}
 
 function StepHeading({ step, title, description }: { step: number; title: string; description: string }) {
     return (
@@ -70,61 +45,25 @@ function StepHeading({ step, title, description }: { step: number; title: string
     );
 }
 
-export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: KonsultasiBaruProps) {
-    const { auth } = usePage<SharedData>().props;
-    const dokterAwalData = dokter.find((item) => item.id === dokterAwal && item.status === 'tersedia' && item.slots.length > 0) ?? null;
-
-    const [filterSpesialisasi, setFilterSpesialisasi] = useState<Spesialisasi | 'Semua'>('Semua');
-    const [dokterId, setDokterId] = useState<number | null>(dokterAwalData?.id ?? null);
-    const [slot, setSlot] = useState(() => {
-        if (!dokterAwalData) {
-            return '';
-        }
-
-        return dokterAwalData.slots.includes(jadwalAwal) ? jadwalAwal : dokterAwalData.slots[0];
-    });
+export default function KonsultasiBaru({ tanggalTersedia, tanggalAwal }: KonsultasiBaruProps) {
+    const [tanggal, setTanggal] = useState<string | null>(
+        tanggalAwal && tanggalTersedia.some((item) => item.value === tanggalAwal) ? tanggalAwal : null,
+    );
     const [keluhan, setKeluhan] = useState('');
     const [durasi, setDurasi] = useState(durasiKeluhan[1]);
     const [setuju, setSetuju] = useState(false);
     const [errors, setErrors] = useState<FormErrors>({});
     const [mengirim, setMengirim] = useState(false);
 
-    const dokterTerpilih = dokterId ? (dokter.find((item) => item.id === dokterId) ?? null) : null;
-    const dokterTersaring = filterSpesialisasi === 'Semua' ? dokter : dokter.filter((item) => item.spesialisasi === filterSpesialisasi);
-    const jumlahDokterTersedia = dokterTersaring.filter((dokter) => dokter.status === 'tersedia').length;
-    const namaPasien = auth.user.name;
-
-    function pilihSpesialisasi(item: Spesialisasi | 'Semua') {
-        setFilterSpesialisasi(item);
-
-        if (item !== 'Semua' && dokterTerpilih && dokterTerpilih.spesialisasi !== item) {
-            setDokterId(null);
-            setSlot('');
-            setErrors((previous) => ({ ...previous, dokter: undefined, slot: undefined }));
-        }
-    }
-
-    function pilihDokter(id: number) {
-        const dipilih = dokter.find((item) => item.id === id);
-
-        if (!dipilih || dipilih.status !== 'tersedia' || dipilih.slots.length === 0) {
-            return;
-        }
-
-        setDokterId(dipilih.id);
-        setSlot(dipilih.slots[0]);
-        setErrors((previous) => ({ ...previous, dokter: undefined, slot: undefined }));
-    }
+    const tanggalTerpilih = tanggal ? (tanggalTersedia.find((item) => item.value === tanggal) ?? null) : null;
 
     function kirimPermintaan(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         const nextErrors: FormErrors = {};
 
-        if (!dokterTerpilih) {
-            nextErrors.dokter = 'Pilih dokter spesialis terlebih dahulu.';
-        } else if (!slot) {
-            nextErrors.slot = 'Pilih salah satu slot jadwal yang tersedia.';
+        if (!tanggalTerpilih) {
+            nextErrors.tanggal_skrining = 'Pilih tanggal skrining terlebih dahulu.';
         }
 
         if (keluhan.trim().length < 10) {
@@ -145,9 +84,7 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
         router.post(
             route('pasien.konsultasi.store'),
             {
-                dokter: dokterTerpilih?.id,
-                slot,
-                hari: dokterTerpilih?.hariTerdekat,
+                tanggal_skrining: tanggal,
                 keluhan: keluhan.trim(),
                 durasi,
                 persetujuan: setuju,
@@ -157,9 +94,7 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
                 onError: (serverErrors) =>
                     setErrors((previous) => ({
                         ...previous,
-                        ...(serverErrors.dokter ? { dokter: serverErrors.dokter } : {}),
-                        ...(serverErrors.slot ? { slot: serverErrors.slot } : {}),
-                        ...(serverErrors.hari ? { slot: serverErrors.hari } : {}),
+                        ...(serverErrors.tanggal_skrining ? { tanggal_skrining: serverErrors.tanggal_skrining } : {}),
                         ...(serverErrors.keluhan ? { keluhan: serverErrors.keluhan } : {}),
                         ...(serverErrors.persetujuan ? { persetujuan: serverErrors.persetujuan } : {}),
                     })),
@@ -170,216 +105,75 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
 
     return (
         <PasienAppLayout
-            active="jadwal"
+            active="konsultasi"
             title="Buat permintaan konsultasi"
-            description="Pilih dokter spesialis, jadwal, dan ceritakan keluhan Anda. Perawat akan menyiapkan skrining saat Anda datang."
+            description="Pilih tanggal skrining dan ceritakan keluhan Anda. Dokter umum akan memutuskan penanganan setelah skrining."
         >
             <Head title="Buat permintaan konsultasi" />
 
             <div className="mb-4">
                 <Link
-                    href="/pasien/jadwal"
+                    href="/pasien"
                     className="inline-flex min-h-9 items-center gap-1.5 text-[11px] font-semibold text-[var(--tk-muted)] transition-colors hover:text-[var(--tk-text)]"
                 >
                     <ArrowLeft className="size-3.5" aria-hidden="true" />
-                    Kembali ke jadwal dokter
+                    Kembali ke beranda
                 </Link>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.9fr)]">
                 <form id="form-permintaan" onSubmit={kirimPermintaan} noValidate className="grid min-w-0 content-start gap-5">
-                    <section aria-labelledby="langkah-dokter" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
+                    <section aria-labelledby="langkah-tanggal" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
                         <StepHeading
                             step={1}
-                            title="Pilih dokter spesialis"
-                            description="Pilih spesialisasi yang sesuai, lalu pilih dokter dengan slot tersedia."
+                            title="Pilih tanggal skrining"
+                            description="Anda akan datang ke Puskesmas Pulau Karang pada tanggal ini untuk diperiksa perawat."
                         />
 
                         <div className="mt-5">
-                            <p className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">Spesialisasi</p>
-                            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                                {spesialisasiFilters.map((item) => {
-                                    const isActive = filterSpesialisasi === item;
+                            <p className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">Tanggal tersedia</p>
+                            <p className="mt-1 text-[10px] text-[var(--tk-muted)]">Hanya hari kerja (Senin–Jumat) dalam 14 hari ke depan.</p>
 
-                                    return (
-                                        <button
-                                            key={item}
-                                            type="button"
-                                            aria-pressed={isActive}
-                                            onClick={() => pilihSpesialisasi(item)}
-                                            className={cn(
-                                                'min-h-9 shrink-0 rounded-full border px-3.5 text-[11px] font-semibold transition-colors',
-                                                isActive
-                                                    ? 'bg-tk-accent text-tk-deep border-transparent'
-                                                    : 'border-[var(--tk-glass-border)] text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
-                                            )}
-                                        >
-                                            {item}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        <fieldset className="mt-4">
-                            <legend className="sr-only">Pilih dokter spesialis</legend>
-                            <div className="flex flex-wrap items-end justify-between gap-1">
-                                <p className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">Dokter tersedia</p>
-                                <span aria-live="polite" className="text-[10px] text-[var(--tk-muted)]">
-                                    {jumlahDokterTersedia} dokter siap menerima konsultasi
-                                </span>
-                            </div>
-
-                            <div className="mt-2 grid gap-3 md:grid-cols-2">
-                                {dokterTersaring.map((dokter) => {
-                                    const tersedia = dokter.status === 'tersedia' && dokter.slots.length > 0;
-                                    const terpilih = dokter.id === dokterId;
-                                    const status = statusMeta[dokter.status];
-
-                                    return (
-                                        <button
-                                            key={dokter.id}
-                                            type="button"
-                                            disabled={!tersedia}
-                                            aria-pressed={terpilih}
-                                            onClick={() => pilihDokter(dokter.id)}
-                                            className={cn(
-                                                'rounded-[20px] border p-4 text-left transition-all',
-                                                terpilih
-                                                    ? 'border-tk-accent bg-tk-accent/[0.08] ring-tk-accent/30 ring-2'
-                                                    : 'hover:border-tk-accent/50 border-[var(--tk-glass-border)]',
-                                                !tersedia && 'cursor-not-allowed opacity-60',
-                                            )}
-                                        >
-                                            <div className="flex items-start gap-3">
-                                                <span className="text-tk-mint grid size-10 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,#0F4A40_0%,#2E8B6A_55%,#9FE3B5_100%)] text-[11px] font-extrabold">
-                                                    {inisial(dokter.nama, true)}
-                                                </span>
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-start gap-2">
-                                                        <p className="min-w-0 flex-1 text-[13px] leading-snug font-bold">{dokter.nama}</p>
-                                                        {terpilih && (
-                                                            <CheckCircle2
-                                                                className="text-tk-green-500 dark:text-tk-accent mt-0.5 size-4 shrink-0"
-                                                                aria-hidden="true"
-                                                            />
-                                                        )}
-                                                    </div>
-                                                    <p className="text-tk-green-500 dark:text-tk-accent mt-0.5 text-[10px] font-semibold">
-                                                        Spesialis {dokter.spesialisasi}
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <div className="mt-3 grid gap-1 text-[10px] text-[var(--tk-muted)]">
-                                                <p className="flex items-center gap-1.5">
-                                                    <MapPin className="size-3 shrink-0" aria-hidden="true" />
-                                                    {dokter.faskes}
-                                                </p>
-                                                <p className="flex items-center gap-1.5">
-                                                    <CalendarDays className="size-3 shrink-0" aria-hidden="true" />
-                                                    {dokter.hari.join(' & ')} · {dokter.jam}
-                                                </p>
-                                            </div>
-
-                                            <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--tk-glass-border)] pt-2.5">
-                                                <span className={cn('rounded-full px-2 py-0.5 text-[9px] font-bold', status.tone)}>
-                                                    {status.label}
-                                                </span>
-                                                <span className="text-[10px] font-semibold text-[var(--tk-muted)]">
-                                                    {tersedia ? `Slot ${dokter.slotTerdekat}` : 'Tidak tersedia'}
-                                                </span>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </fieldset>
-
-                        <InputError message={errors.dokter} className="text-tk-danger mt-3 text-[11px]" />
-                    </section>
-
-                    <section aria-labelledby="langkah-jadwal" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
-                        <StepHeading
-                            step={2}
-                            title="Pilih jadwal"
-                            description="Slot di bawah mengikuti jadwal praktik terdekat dokter yang dipilih."
-                        />
-
-                        <div className="mt-5">
-                            {dokterTerpilih ? (
-                                <>
-                                    <div className="flex items-center gap-3 rounded-2xl bg-[var(--tk-page-alt)] p-4">
-                                        <span className="text-tk-mint grid size-10 shrink-0 place-items-center rounded-xl bg-[linear-gradient(135deg,#0F4A40_0%,#2E8B6A_55%,#9FE3B5_100%)] text-[11px] font-extrabold">
-                                            {inisial(dokterTerpilih.nama, true)}
-                                        </span>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="truncate text-xs font-bold">{dokterTerpilih.nama}</p>
-                                            <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">
-                                                {dokterTerpilih.hariTerdekat} · {dokterTerpilih.jam}
-                                            </p>
-                                        </div>
-                                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--tk-glass)] px-2.5 py-1 text-[9px] font-bold text-[var(--tk-muted)]">
-                                            <Clock className="size-3" aria-hidden="true" />
-                                            WIT
-                                        </span>
-                                    </div>
-
-                                    <fieldset className="mt-4">
-                                        <legend className="text-[10px] font-semibold tracking-[0.12em] text-[var(--tk-muted)] uppercase">
-                                            Slot tersedia
-                                        </legend>
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            {dokterTerpilih.slots.map((item) => {
-                                                const isActive = slot === item;
-
-                                                return (
-                                                    <button
-                                                        key={item}
-                                                        type="button"
-                                                        aria-pressed={isActive}
-                                                        onClick={() => {
-                                                            setSlot(item);
-                                                            setErrors((previous) => ({ ...previous, slot: undefined }));
-                                                        }}
-                                                        className={cn(
-                                                            'min-h-11 rounded-full border px-4 text-xs font-bold transition-colors',
-                                                            isActive
-                                                                ? 'bg-tk-accent text-tk-deep border-transparent'
-                                                                : 'hover:border-tk-accent/60 border-[var(--tk-glass-border)] text-[var(--tk-text)]',
-                                                        )}
-                                                    >
-                                                        {item}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </fieldset>
-
-                                    <div className="mt-3 flex items-start gap-2 rounded-xl bg-[var(--tk-page-alt)] p-3 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                        <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                                        Jadwal final akan dikonfirmasi dokter spesialis. Jika berubah, Anda akan menerima notifikasi.
-                                    </div>
-
-                                    <InputError message={errors.slot} className="text-tk-danger mt-3 text-[11px]" />
-                                </>
+                            {tanggalTersedia.length === 0 ? (
+                                <p className="mt-3 rounded-2xl border border-dashed border-[var(--tk-glass-border)] px-4 py-6 text-center text-[11px] text-[var(--tk-muted)]">
+                                    Belum ada tanggal skrining tersedia. Hubungi perawat puskesmas.
+                                </p>
                             ) : (
-                                <div className="rounded-2xl border border-dashed border-[var(--tk-glass-border)] px-5 py-8 text-center">
-                                    <span className="grid size-11 place-items-center rounded-full bg-[var(--tk-page-alt)] text-[var(--tk-muted)]">
-                                        <CalendarDays className="size-5" aria-hidden="true" />
-                                    </span>
-                                    <p className="mt-3 text-xs font-bold">Pilih dokter terlebih dahulu</p>
-                                    <p className="mx-auto mt-1 max-w-xs text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                        Slot jadwal akan muncul setelah Anda memilih dokter spesialis di langkah 1.
-                                    </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {tanggalTersedia.map((item) => {
+                                        const isActive = tanggal === item.value;
+
+                                        return (
+                                            <button
+                                                key={item.value}
+                                                type="button"
+                                                aria-pressed={isActive}
+                                                onClick={() => {
+                                                    setTanggal(item.value);
+                                                    setErrors((previous) => ({ ...previous, tanggal_skrining: undefined }));
+                                                }}
+                                                className={cn(
+                                                    'min-h-11 min-w-20 rounded-2xl border px-3 py-2 text-left text-[11px] font-semibold transition-colors',
+                                                    isActive
+                                                        ? 'bg-tk-accent text-tk-deep border-transparent'
+                                                        : 'hover:border-tk-accent/60 border-[var(--tk-glass-border)] text-[var(--tk-text)]',
+                                                )}
+                                            >
+                                                <span className="block text-[9px] font-bold tracking-[0.08em] uppercase">{item.singkat}</span>
+                                                <span className="mt-0.5 block text-[10px] leading-snug">{item.label.split(', ')[0]}</span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             )}
+
+                            <InputError message={errors.tanggal_skrining} className="text-tk-danger mt-3 text-[11px]" />
                         </div>
                     </section>
 
                     <section aria-labelledby="langkah-keluhan" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
                         <StepHeading
-                            step={3}
+                            step={2}
                             title="Ceritakan keluhan"
                             description="Tulis keluhan utama dan berapa lama sudah dirasakan. Perawat akan memeriksa tanda vital saat skrining."
                         />
@@ -447,7 +241,7 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
 
                     <section aria-labelledby="langkah-konfirmasi" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
                         <StepHeading
-                            step={4}
+                            step={3}
                             title="Konfirmasi dan kirim"
                             description="Periksa kembali pilihan Anda. Permintaan akan masuk antrean skrining perawat."
                         />
@@ -482,7 +276,7 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
                                     {mengirim ? 'Mengirim permintaan...' : 'Kirim permintaan konsultasi'}
                                 </button>
                                 <Link
-                                    href="/pasien/jadwal"
+                                    href="/pasien"
                                     className="inline-flex min-h-12 items-center justify-center rounded-full border border-[var(--tk-glass-border)] px-5 text-xs font-semibold text-[var(--tk-text)] transition-colors hover:bg-[var(--tk-page-alt)]"
                                 >
                                     Batal
@@ -491,7 +285,7 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
 
                             <p className="mt-3 flex items-start gap-1.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
                                 <Info className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                                Setelah dikirim, status permintaan menjadi “Menunggu skrining”. Datang ke puskesmas untuk menyelesaikan skrining.
+                                Setelah dikirim, status permintaan menjadi “Menunggu skrining”. Datang ke puskesmas pada tanggal yang dipilih.
                             </p>
                         </div>
                     </section>
@@ -506,34 +300,13 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
                             <span className="bg-tk-warning/15 text-tk-warning rounded-full px-2.5 py-1 text-[9px] font-bold">Draf</span>
                         </div>
 
-                        <div className="mt-4 flex items-center gap-3 border-b border-[var(--tk-glass-border)] pb-4">
-                            <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-10 shrink-0 place-items-center rounded-full text-[11px] font-extrabold">
-                                {inisial(namaPasien)}
-                            </span>
-                            <div className="min-w-0">
-                                <p className="truncate text-xs font-bold">{namaPasien}</p>
-                                <p className="truncate text-[10px] text-[var(--tk-muted)]">{auth.user.email}</p>
-                            </div>
-                        </div>
-
                         <dl className="mt-4 grid gap-3 text-xs">
                             <div>
                                 <dt className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--tk-muted)]">
-                                    <Stethoscope className="size-3" aria-hidden="true" />
-                                    Dokter spesialis
-                                </dt>
-                                <dd className="mt-1 font-bold">{dokterTerpilih ? dokterTerpilih.nama : 'Belum dipilih'}</dd>
-                                {dokterTerpilih && <dd className="text-[10px] text-[var(--tk-muted)]">Spesialis {dokterTerpilih.spesialisasi}</dd>}
-                            </div>
-
-                            <div>
-                                <dt className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--tk-muted)]">
                                     <CalendarDays className="size-3" aria-hidden="true" />
-                                    Jadwal
+                                    Tanggal skrining
                                 </dt>
-                                <dd className="mt-1 font-bold">
-                                    {dokterTerpilih && slot ? `${dokterTerpilih.hariTerdekat}, ${slot} WIT` : 'Belum dipilih'}
-                                </dd>
+                                <dd className="mt-1 font-bold">{tanggalTerpilih ? tanggalTerpilih.label : 'Belum dipilih'}</dd>
                             </div>
 
                             <div>
@@ -551,6 +324,16 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
                                 </dt>
                                 <dd className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--tk-muted)]">
                                     {keluhan.trim() || 'Belum diisi'}
+                                </dd>
+                            </div>
+
+                            <div>
+                                <dt className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--tk-muted)]">
+                                    <Stethoscope className="size-3" aria-hidden="true" />
+                                    Dokter spesialis
+                                </dt>
+                                <dd className="mt-1 text-[11px] leading-relaxed text-[var(--tk-muted)]">
+                                    Ditentukan perawat setelah dokter umum memutuskan konsultasi spesialis.
                                 </dd>
                             </div>
                         </dl>
@@ -582,9 +365,9 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
                             <ShieldCheck className="size-4" aria-hidden="true" />
                         </span>
                         <div>
-                            <p className="text-[11px] font-bold">Tidak bisa datang hari ini?</p>
+                            <p className="text-[11px] font-bold">Tidak bisa datang pada tanggal itu?</p>
                             <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                Hubungi perawat puskesmas. Permintaan yang tidak diskrining dalam 3 hari akan kedaluwarsa dan slot dilepas.
+                                Hubungi perawat puskesmas. Permintaan yang tidak diskrining dalam 3 hari setelah tanggal skrining akan kedaluwarsa.
                             </p>
                         </div>
                     </section>

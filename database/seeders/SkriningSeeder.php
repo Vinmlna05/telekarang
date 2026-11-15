@@ -98,6 +98,18 @@ class SkriningSeeder extends Seeder
                 'prioritas' => 'sedang',
                 'catatan' => 'Luka kaki tampak kotor dengan sedikit nanah, belum ada tanda syok.',
             ],
+            'Siti Khadijah' => [
+                'berat' => 52,
+                'tinggi' => 150,
+                'sistol' => 96,
+                'diastol' => 62,
+                'suhu' => 36.6,
+                'nadi' => 88,
+                'spo2' => 98,
+                'tanda_bahaya' => false,
+                'prioritas' => 'normal',
+                'catatan' => 'Pusing berputar saat berdiri, tekanan darah sedikit rendah. Menunggu review dokter umum.',
+            ],
         ];
 
         foreach ($data as $nama => $nilai) {
@@ -105,12 +117,14 @@ class SkriningSeeder extends Seeder
                 ->whereHas('pasien', fn ($query) => $query->where('nama', $nama))
                 ->firstOrFail();
 
+            $waktuSkrining = $konsultasi->tanggal ?? $konsultasi->tanggal_skrining ?? $konsultasi->created_at;
+
             Skrining::query()->updateOrCreate(
                 ['konsultasi_id' => $konsultasi->id],
                 [
                     ...$nilai,
                     'perawat_id' => $perawat?->id,
-                    'waktu' => (clone $konsultasi->tanggal)->addMinutes(30),
+                    'waktu' => (clone $waktuSkrining)->addMinutes(30),
                 ],
             );
         }

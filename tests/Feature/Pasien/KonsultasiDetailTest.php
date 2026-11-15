@@ -5,6 +5,7 @@ use App\Models\HasilKonsultasi;
 use App\Models\Icd10;
 use App\Models\Konsultasi;
 use App\Models\Pasien;
+use App\Models\Pesan;
 use App\Models\Skrining;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -92,6 +93,38 @@ test('patients can view their own consultation detail', function () {
             ->where('konsultasi.skrining.spo2', 99)
             ->where('konsultasi.skrining.sistol', 120)
             ->where('konsultasi.skrining.diastol', 80));
+});
+
+test('patients can read chat messages sent by staff', function () {
+    [$user, , $dokter, $konsultasi] = buatKonsultasiPasienDetail();
+    $konsultasi->update(['status' => 'BERLANGSUNG']);
+
+    $perawat = User::factory()->create(['role' => 'perawat']);
+
+    Pesan::create([
+        'konsultasi_id' => $konsultasi->id,
+        'pengirim_id' => $dokter->user_id,
+        'isi' => 'Halo, saya sudah membaca hasil skrining Anda.',
+        'status_kirim' => 'terkirim',
+        'waktu' => '2026-11-08 09:00:00',
+    ]);
+    Pesan::create([
+        'konsultasi_id' => $konsultasi->id,
+        'pengirim_id' => $perawat->id,
+        'isi' => 'Dokter akan segera bergabung.',
+        'status_kirim' => 'terkirim',
+        'waktu' => '2026-11-08 09:05:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get('/pasien/konsultasi/'.$konsultasi->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('konsultasi.pesan', 2)
+            ->where('konsultasi.pesan.0.pengirim', 'spesialis')
+            ->where('konsultasi.pesan.0.isi', 'Halo, saya sudah membaca hasil skrining Anda.')
+            ->where('konsultasi.pesan.1.pengirim', 'perawat')
+            ->where('konsultasi.pesan.1.isi', 'Dokter akan segera bergabung.'));
 });
 
 test('consultation detail tolerates empty screening and result', function () {

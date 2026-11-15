@@ -2,7 +2,7 @@ import { type ReactNode } from 'react';
 
 import RoleDashboardLayout from '@/layouts/dashboard/role-dashboard-layout';
 
-type NavKey = 'beranda' | 'jadwal' | 'riwayat' | 'profil' | 'none';
+type NavKey = 'beranda' | 'konsultasi' | 'riwayat' | 'profil' | 'none';
 
 interface PasienAppLayoutProps {
     children: ReactNode;

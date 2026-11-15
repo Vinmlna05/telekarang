@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Perawat;
 
 use App\Http\Controllers\Controller;
 use App\Models\Konsultasi;
+use App\Support\TanggalIndonesia;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -11,18 +12,29 @@ use Inertia\Response;
 class BerandaController extends Controller
 {
     /**
-     * Status konsultasi yang masuk antrean skrining perawat.
+     * Status konsultasi yang masih berjalan di tangan perawat.
      *
      * @var list<string>
      */
     private const STATUS_ANTREAN = [
         'MENUNGGU_SKRINING',
         'SKRINING_SELESAI',
+        'MENUNGGU_PEMILIHAN_SPESIALIS',
         'MENUNGGU_SPESIALIS',
+        'DIJADWAL_ULANG',
+        'DIKONFIRMASI',
+        'BERLANGSUNG',
     ];
 
     /**
-     * Dasbor perawat: antrean skrining dan tindak lanjut hari ini.
+     * Status konsultasi yang sudah selesai ditindaklanjuti.
+     *
+     * @var list<string>
+     */
+    private const STATUS_SELESAI = ['SELESAI', 'DIRUJUK', 'DITANGANI_PUSKESMAS'];
+
+    /**
+     * Dasbor perawat: antrean skrining dan tindak lanjut hasil konsultasi.
      */
     public function __invoke(): Response
     {
@@ -53,35 +65,57 @@ class BerandaController extends Controller
             ->values()
             ->all();
 
+        $totalSelesai = Konsultasi::query()->whereIn('status', self::STATUS_SELESAI)->count();
+
+        $rujukanTerhindarkan = Konsultasi::query()
+            ->where(fn ($query) => $query
+                ->where('status', 'DITANGANI_PUSKESMAS')
+                ->orWhereHas('hasil', fn ($hasil) => $hasil->where('keputusan_rujuk', false)))
+            ->count();
+
+        $totalRujukan = Konsultasi::query()
+            ->where(fn ($query) => $query
+                ->where('status', 'DIRUJUK')
+                ->orWhereHas('hasil', fn ($hasil) => $hasil->where('keputusan_rujuk', true)))
+            ->count();
+
+        $persentase = $totalSelesai > 0
+            ? (int) round($rujukanTerhindarkan / $totalSelesai * 100)
+            : 0;
+
+        $tindakLanjut = Konsultasi::query()
+            ->with(['pasien', 'hasil', 'dokterSpesialis'])
+            ->whereIn('status', self::STATUS_SELESAI)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->limit(3)
+            ->get()
+            ->map(function (Konsultasi $konsultasi): array {
+                $hasil = $konsultasi->hasil;
+
+                return [
+                    'id' => $konsultasi->id,
+                    'nama' => $konsultasi->pasien?->nama ?? 'Pasien',
+                    'diagnosisKode' => $hasil?->icd10?->kode ?? ($hasil?->icd10_kode ?? '-'),
+                    'diagnosisNama' => $hasil?->icd10?->nama_diagnosis ?? ($hasil !== null ? 'Diagnosis tercatat' : 'Rujuk langsung'),
+                    'keputusanRujuk' => $konsultasi->status === 'DIRUJUK' || $hasil?->keputusan_rujuk === true,
+                    'tanggal' => TanggalIndonesia::waktu($konsultasi->updated_at),
+                    'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter umum',
+                ];
+            })
+            ->values()
+            ->all();
+
         return Inertia::render('perawat/beranda', [
             'ringkasan' => [
-                'rujukanTerhindarkan' => 38,
-                'totalRujukan' => 95,
-                'persentase' => 40,
+                'rujukanTerhindarkan' => $rujukanTerhindarkan,
+                'totalRujukan' => $totalRujukan,
+                'persentase' => $persentase,
                 'antreanHariIni' => $antreanHariIni,
-                'menungguTindakLanjut' => 2,
+                'menungguTindakLanjut' => $totalSelesai,
             ],
             'antrean' => $antrean,
-            'tindakLanjut' => [
-                [
-                    'id' => 8,
-                    'nama' => 'Yohanes Kurniawan',
-                    'diagnosisKode' => 'I10',
-                    'diagnosisNama' => 'Hipertensi esensial',
-                    'keputusanRujuk' => false,
-                    'tanggal' => 'Hari ini, 07.45',
-                    'dokter' => 'dr. Bima Pratama, Sp.PD',
-                ],
-                [
-                    'id' => 9,
-                    'nama' => 'Nur Aisyah',
-                    'diagnosisKode' => 'J06.9',
-                    'diagnosisNama' => 'ISPA akut',
-                    'keputusanRujuk' => true,
-                    'tanggal' => 'Hari ini, 08.10',
-                    'dokter' => 'dr. Ayu Lestari, Sp.A',
-                ],
-            ],
+            'tindakLanjut' => $tindakLanjut,
         ]);
     }
 

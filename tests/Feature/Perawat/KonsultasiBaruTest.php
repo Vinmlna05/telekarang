@@ -1,50 +1,9 @@
 <?php
 
-use App\Models\Dokter;
-use App\Models\Jadwal;
 use App\Models\Konsultasi;
-use App\Models\Pasien;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
-
-/**
- * @return array{0: Dokter, 1: Jadwal}
- */
-function buatDokterJadwalKonsultasiBaru(string $hari = 'Senin', string $jamMulai = '09:00:00', string $status = 'tersedia'): array
-{
-    $user = User::factory()->create(['role' => 'spesialis']);
-    $dokter = Dokter::query()->create([
-        'user_id' => $user->id,
-        'nama' => 'dr. Ayu Lestari, Sp.A',
-        'peran' => 'spesialis',
-        'spesialisasi' => 'Anak',
-        'faskes' => 'RS Rujukan Daratan',
-        'status' => 'aktif',
-    ]);
-
-    $jadwal = Jadwal::query()->create([
-        'dokter_id' => $dokter->id,
-        'hari' => $hari,
-        'jam_mulai' => $jamMulai,
-        'jam_selesai' => '12:00:00',
-        'status' => $status,
-    ]);
-
-    return [$dokter, $jadwal];
-}
-
-function buatPasienTerverifikasiKonsultasiBaru(string $nik = '9101010101010001'): Pasien
-{
-    return Pasien::query()->create([
-        'nama' => 'Aisyah Rahmawati',
-        'nik' => $nik,
-        'tgl_lahir' => '1991-03-14',
-        'jenis_kelamin' => 'Perempuan',
-        'alamat' => 'Dusun Karang Indah, Pulau Karang',
-        'telepon' => '081234567801',
-        'status_verifikasi' => Pasien::STATUS_TERVERIFIKASI,
-    ]);
-}
 
 test('guests are redirected from the new consultation form', function () {
     $this->get('/perawat/konsultasi/baru')->assertRedirect(route('login'));
@@ -57,32 +16,13 @@ test('guests cannot submit a new consultation', function () {
 test('nurses can view verified patients on the new consultation form', function () {
     $perawat = User::factory()->create(['role' => 'perawat']);
 
-    $tanpaAkun = Pasien::query()->create([
-        'nama' => 'Nur Aini',
-        'nik' => '9101010101010003',
-        'tgl_lahir' => '2016-11-21',
-        'jenis_kelamin' => 'Perempuan',
-        'alamat' => 'Dusun Pulau Seribu, Pulau Karang',
-        'telepon' => '081234567802',
-        'status_verifikasi' => Pasien::STATUS_TERVERIFIKASI,
-    ]);
+    $tanpaAkun = pasienUji(['nama' => 'Nur Aini'], null);
+    $tanpaAkun->update(['user_id' => null]);
 
-    $denganAkun = Pasien::query()->create([
-        'user_id' => User::factory()->create(['role' => 'pasien'])->id,
-        'nama' => 'Aisyah Rahmawati',
-        'nik' => '9101010101010001',
-        'tgl_lahir' => '1991-03-14',
-        'jenis_kelamin' => 'Perempuan',
-        'alamat' => 'Dusun Karang Indah, Pulau Karang',
-        'telepon' => '081234567801',
-        'status_verifikasi' => Pasien::STATUS_TERVERIFIKASI,
-    ]);
+    $akunPasien = User::factory()->create(['role' => 'pasien']);
+    $denganAkun = pasienUji(['nama' => 'Aisyah Rahmawati'], $akunPasien);
 
-    Pasien::query()->create([
-        'nama' => 'Pasien Belum Verifikasi',
-        'nik' => '9101010101010004',
-        'status_verifikasi' => Pasien::STATUS_MENUNGGU_VERIFIKASI,
-    ]);
+    pasienUji(['nama' => 'Pasien Belum Verifikasi', 'status_verifikasi' => 'MENUNGGU_VERIFIKASI']);
 
     $this->actingAs($perawat)
         ->get('/perawat/konsultasi/baru')
@@ -94,18 +34,13 @@ test('nurses can view verified patients on the new consultation form', function 
             ->where('pasien.0.id', $denganAkun->id)
             ->where('pasien.0.punyaAkun', true)
             ->where('pasien.1.id', $tanpaAkun->id)
-            ->where('pasien.1.punyaAkun', false));
+            ->where('pasien.1.punyaAkun', false)
+            ->where('permintaanTerkirim', null));
 });
 
 test('the patient chosen from the patient directory is preselected', function () {
     $perawat = User::factory()->create(['role' => 'perawat']);
-    $pasien = Pasien::query()->create([
-        'nama' => 'Aisyah Rahmawati',
-        'nik' => '9101010101010001',
-        'tgl_lahir' => '1991-03-14',
-        'jenis_kelamin' => 'Perempuan',
-        'status_verifikasi' => Pasien::STATUS_TERVERIFIKASI,
-    ]);
+    $pasien = pasienUji(['nama' => 'Aisyah Rahmawati']);
 
     $this->actingAs($perawat)
         ->get("/perawat/konsultasi/baru?pasien={$pasien->id}")
@@ -119,11 +54,7 @@ test('the patient chosen from the patient directory is preselected', function ()
 
 test('an unverified patient cannot be preselected', function () {
     $perawat = User::factory()->create(['role' => 'perawat']);
-    $pasien = Pasien::query()->create([
-        'nama' => 'Pasien Belum Verifikasi',
-        'nik' => '9101010101010004',
-        'status_verifikasi' => Pasien::STATUS_MENUNGGU_VERIFIKASI,
-    ]);
+    $pasien = pasienUji(['status_verifikasi' => 'MENUNGGU_VERIFIKASI']);
 
     $this->actingAs($perawat)
         ->get("/perawat/konsultasi/baru?pasien={$pasien->id}")
@@ -134,38 +65,14 @@ test('an unverified patient cannot be preselected', function () {
             ->has('pasien', 0));
 });
 
-test('users with other roles cannot view the new consultation form', function (string $role) {
-    $user = User::factory()->create(['role' => $role]);
-
-    $this->actingAs($user)
-        ->get('/perawat/konsultasi/baru')
-        ->assertForbidden();
-})->with(['pasien', 'dokter_umum', 'spesialis', 'admin']);
-
-test('the form lists doctors and available slots from the database', function () {
-    $perawat = User::factory()->create(['role' => 'perawat']);
-    [$dokter] = buatDokterJadwalKonsultasiBaru();
-
-    $this->actingAs($perawat)
-        ->get('/perawat/konsultasi/baru')
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('dokter.0.id', $dokter->id)
-            ->where('dokter.0.nama', 'dr. Ayu Lestari, Sp.A')
-            ->where('dokter.0.slots.0', '09.00')
-            ->where('permintaanTerkirim', null));
-});
-
 test('nurses can submit a consultation and continue to screening', function () {
+    Carbon::setTestNow(Carbon::parse('2026-11-09 08:00:00'));
+
     $perawat = User::factory()->create(['role' => 'perawat']);
-    $pasien = buatPasienTerverifikasiKonsultasiBaru();
-    [$dokter, $jadwal] = buatDokterJadwalKonsultasiBaru();
+    $pasien = pasienUji(['nama' => 'Aisyah Rahmawati']);
 
     $response = $this->actingAs($perawat)->post('/perawat/konsultasi', [
         'pasien' => $pasien->id,
-        'dokter' => $dokter->id,
-        'slot' => '09.00',
-        'hari' => 'Senin',
         'keluhan' => 'Demam tinggi dan batuk sejak tiga hari.',
         'durasi' => '1–3 hari',
         'persetujuan' => true,
@@ -179,24 +86,23 @@ test('nurses can submit a consultation and continue to screening', function () {
 
     expect($konsultasi->pasien_id)->toBe($pasien->id)
         ->and($konsultasi->dibuat_oleh)->toBe($perawat->id)
-        ->and($konsultasi->dokter_spesialis_id)->toBe($dokter->id)
-        ->and($konsultasi->jadwal_id)->toBe($jadwal->id)
+        ->and($konsultasi->dokter_spesialis_id)->toBeNull()
+        ->and($konsultasi->jadwal_id)->toBeNull()
         ->and($konsultasi->mode)->toBe('teks')
         ->and($konsultasi->status)->toBe('MENUNGGU_SKRINING')
+        ->and($konsultasi->tanggal)->toBeNull()
         ->and($konsultasi->keluhan)->toContain('(dialami 1–3 hari)')
-        ->and($konsultasi->kedaluwarsa_pada?->equalTo($konsultasi->tanggal->copy()->addDays(3)))->toBeTrue();
+        ->and($konsultasi->kedaluwarsa_pada?->toDateTimeString())->toBe('2026-11-12 23:59:59');
+
+    Carbon::setTestNow();
 });
 
 test('a new consultation appears in the nurse queue and beranda immediately', function () {
     $perawat = User::factory()->create(['role' => 'perawat']);
-    $pasien = buatPasienTerverifikasiKonsultasiBaru();
-    [$dokter] = buatDokterJadwalKonsultasiBaru();
+    $pasien = pasienUji(['nama' => 'Nur Aini']);
 
     $this->actingAs($perawat)->post('/perawat/konsultasi', [
         'pasien' => $pasien->id,
-        'dokter' => $dokter->id,
-        'slot' => '09.00',
-        'hari' => 'Senin',
         'keluhan' => 'Demam tinggi dan batuk sejak tiga hari.',
         'durasi' => '1–3 hari',
         'persetujuan' => true,
@@ -223,18 +129,11 @@ test('a new consultation appears in the nurse queue and beranda immediately', fu
 
 test('the sent confirmation shows the consultation and links to its screening', function () {
     $perawat = User::factory()->create(['role' => 'perawat']);
-    $pasien = buatPasienTerverifikasiKonsultasiBaru();
-    [$dokter, $jadwal] = buatDokterJadwalKonsultasiBaru();
-
-    $konsultasi = Konsultasi::query()->create([
-        'pasien_id' => $pasien->id,
+    $pasien = pasienUji(['nama' => 'Aisyah Rahmawati']);
+    $konsultasi = konsultasiUji($pasien, [
         'dibuat_oleh' => $perawat->id,
-        'dokter_spesialis_id' => $dokter->id,
-        'jadwal_id' => $jadwal->id,
-        'mode' => 'teks',
-        'status' => 'MENUNGGU_SKRINING',
         'keluhan' => 'Demam tinggi sejak tiga hari.',
-        'tanggal' => now()->next('Monday')->setTime(9, 0),
+        'kedaluwarsa_pada' => now()->endOfDay()->addDays(3),
     ]);
 
     $this->actingAs($perawat)
@@ -244,22 +143,16 @@ test('the sent confirmation shows the consultation and links to its screening', 
             ->component('perawat/konsultasi-baru')
             ->where('permintaanTerkirim.id', $konsultasi->id)
             ->where('permintaanTerkirim.pasien.nama', $pasien->nama)
-            ->where('permintaanTerkirim.dokter.nama', $dokter->nama)
-            ->where('permintaanTerkirim.jadwal.hari', 'Senin')
-            ->where('permintaanTerkirim.jadwal.slot', '09.00')
+            ->where('permintaanTerkirim.status', 'MENUNGGU_SKRINING')
             ->where('permintaanTerkirim.keluhan', 'Demam tinggi sejak tiga hari.'));
 });
 
 test('a consultation cannot be submitted with incomplete or invalid data', function (array $payload, string $error) {
     $perawat = User::factory()->create(['role' => 'perawat']);
-    $pasien = buatPasienTerverifikasiKonsultasiBaru();
-    [$dokter] = buatDokterJadwalKonsultasiBaru();
+    $pasien = pasienUji();
 
     $data = array_merge([
         'pasien' => $pasien->id,
-        'dokter' => $dokter->id,
-        'slot' => '09.00',
-        'hari' => 'Senin',
         'keluhan' => 'Demam tinggi dan batuk sejak tiga hari.',
         'durasi' => '1–3 hari',
         'persetujuan' => true,
@@ -273,24 +166,16 @@ test('a consultation cannot be submitted with incomplete or invalid data', funct
 })->with([
     'keluhan terlalu pendek' => [['keluhan' => 'Demam'], 'keluhan'],
     'persetujuan belum dicentang' => [['persetujuan' => false], 'persetujuan'],
-    'slot tidak tersedia' => [['slot' => '13.00'], 'slot'],
+    'pasien tidak dipilih' => [['pasien' => null], 'pasien'],
 ]);
 
 test('a consultation cannot be submitted for an unverified patient', function () {
     $perawat = User::factory()->create(['role' => 'perawat']);
-    $pasien = Pasien::query()->create([
-        'nama' => 'Pasien Belum Verifikasi',
-        'nik' => '9101010101010099',
-        'status_verifikasi' => Pasien::STATUS_MENUNGGU_VERIFIKASI,
-    ]);
-    [$dokter] = buatDokterJadwalKonsultasiBaru();
+    $pasien = pasienUji(['status_verifikasi' => 'MENUNGGU_VERIFIKASI']);
 
     $this->actingAs($perawat)
         ->post('/perawat/konsultasi', [
             'pasien' => $pasien->id,
-            'dokter' => $dokter->id,
-            'slot' => '09.00',
-            'hari' => 'Senin',
             'keluhan' => 'Demam tinggi dan batuk sejak tiga hari.',
             'durasi' => '1–3 hari',
             'persetujuan' => true,
@@ -299,6 +184,14 @@ test('a consultation cannot be submitted for an unverified patient', function ()
 
     expect(Konsultasi::query()->count())->toBe(0);
 });
+
+test('users with other roles cannot view the new consultation form', function (string $role) {
+    $user = User::factory()->create(['role' => $role]);
+
+    $this->actingAs($user)
+        ->get('/perawat/konsultasi/baru')
+        ->assertForbidden();
+})->with(['pasien', 'dokter_umum', 'spesialis', 'admin']);
 
 test('users with other roles cannot submit a consultation', function (string $role) {
     $user = User::factory()->create(['role' => $role]);

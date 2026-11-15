@@ -1,6 +1,5 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
-    CalendarDays,
     ChevronRight,
     Droplet,
     HeartPulse,
@@ -79,15 +78,9 @@ interface ProfilPasienProps {
 const aksiCepat = [
     {
         label: 'Buat permintaan konsultasi',
-        description: 'Pilih dokter spesialis dan jadwal',
+        description: 'Pilih tanggal skrining',
         href: '/pasien/konsultasi/baru',
         icon: Plus,
-    },
-    {
-        label: 'Lihat jadwal dokter',
-        description: 'Cek spesialis yang tersedia',
-        href: '/pasien/jadwal',
-        icon: CalendarDays,
     },
     {
         label: 'Riwayat konsultasi',

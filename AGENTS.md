@@ -6,7 +6,7 @@ Panduan untuk AI agent yang membangun TeleKarang: sistem telemedicine kepulauan 
 
 **Stack nyata:** Laravel 12 + Inertia v2 + React 19 + TypeScript + Tailwind CSS v4 (CSS-first, tanpa `tailwind.config.js`) + shadcn/ui + lucide-react + Ziggy. Pest untuk tes. DB SQLite (`database/database.sqlite`). Bukan Next.js.
 
-**Status repo:** masih starter kit Laravel React. Landing page TeleKarang ada di `resources/js/pages/welcome.tsx` (route `/`), halaman login/registrasi bertema di `resources/js/pages/auth/` (layout bersama `layouts/auth/auth-telekarang-layout.tsx`), dan kolom `users.role` (default `pasien`) sudah ada. Baru ada auth, settings, `dashboard`; belum ada model/tabel/route/halaman domain TeleKarang lain. Mulai dari fondasi (bagian 11).
+**Status repo:** alur inti TeleKarang sudah berjalan end-to-end dan berbasis DB (pasien/permintaan → skrining perawat → review dokter umum → pemilihan spesialis oleh perawat → konfirmasi & ruang konsultasi spesialis → hasil ICD-10 & keputusan rujuk → tindak lanjut/dasbor). Seed data fiktif lengkap. Semua tes Pest hijau. Halaman `/pasien/jadwal` sudah dihapus; pasien memilih tanggal skrining di `/pasien/konsultasi/baru`.
 
 Perintah (jalankan dari root):
 
@@ -40,7 +40,7 @@ Di PowerShell, jalankan `php vendor/bin/pest` dan `php vendor/bin/pint` (bukan `
 - Recharts/Chart.js belum terpasang. Boleh ditambah untuk dasbor, tapi jelaskan alasannya (bagian 2).
 - Booleans/enum status: gunakan string status persis seperti bagian 4 (mis. `MENUNGGU_SKRINING`) agar filter dan label konsisten.
 - Data selalu fiktif. Jangan commit `.env`, kredensial, atau data nyata.
-- Belum ada `README.md` dan repo ini belum di-`git init`; DoD mewajibkan README berisi cara jalan, akun demo, dan catatan data fiktif.
+- `README.md` berisi cara menjalankan, akun demo, dan catatan data fiktif; jaga tetap sinkron saat alur/seed berubah.
 - Laravel Boost MCP tersedia (`opencode.json` → `php artisan boost:mcp`); gunakan `search-docs`/`database-schema` untuk verifikasi API Laravel/Inertia, dan skill di `.agents/skills/` bila relevan.
 
 ---
@@ -166,11 +166,10 @@ Umum
 Pasien
 #	Halaman	Route
 4	Beranda pasien (status permintaan aktif)	`/pasien`
-5	Jadwal dokter spesialis	`/pasien/jadwal`
-6	Buat permintaan konsultasi	`/pasien/konsultasi/baru`
-7	Detail konsultasi (status, skrining read-only, hasil, chat)	`/pasien/konsultasi/[id]`
-8	Riwayat konsultasi	`/pasien/riwayat`
-9	Profil	`/pasien/profil`
+5	Buat permintaan konsultasi + pilih tanggal skrining	`/pasien/konsultasi/baru`
+6	Detail konsultasi (status, skrining read-only, hasil, chat)	`/pasien/konsultasi/[id]`
+7	Riwayat konsultasi	`/pasien/riwayat`
+8	Profil	`/pasien/profil`
 Perawat
 #	Halaman	Route
 10	Dasbor perawat (antrean skrining hari ini)	`/perawat`

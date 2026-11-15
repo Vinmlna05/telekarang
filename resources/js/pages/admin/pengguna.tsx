@@ -1,5 +1,6 @@
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import {
+    AlertTriangle,
     BriefcaseMedical,
     CheckCircle2,
     ChevronDown,
@@ -8,6 +9,7 @@ import {
     Search,
     ShieldCheck,
     Stethoscope,
+    Trash2,
     UserPlus,
     UserRound,
     Users,
@@ -65,6 +67,7 @@ type StaffForm = {
     name: string;
     email: string;
     role: StaffRole;
+    spesialisasi: string;
     password: string;
     password_confirmation: string;
 };
@@ -105,6 +108,7 @@ const roleMeta: Record<Peran, { label: string; description: string; icon: Lucide
 };
 
 const staffRoles: StaffRole[] = ['perawat', 'dokter_umum', 'spesialis'];
+const pilihanSpesialisasi = ['Anak', 'Penyakit Dalam', 'Kulit', 'Kandungan', 'Bedah', 'Mata', 'THT', 'Saraf', 'Lainnya'];
 const formatAngka = new Intl.NumberFormat('id-ID');
 const formatTanggal = new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -130,11 +134,14 @@ export default function Pengguna({ pengguna, ringkasan, filters }: PenggunaProps
     const [q, setQ] = useState(filters.q);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [processingId, setProcessingId] = useState<number | null>(null);
+    const [hapusTarget, setHapusTarget] = useState<PenggunaItem | null>(null);
+    const [menghapus, setMenghapus] = useState(false);
 
     const form = useForm<StaffForm>({
         name: '',
         email: '',
         role: 'perawat',
+        spesialisasi: 'Anak',
         password: '',
         password_confirmation: '',
     });
@@ -173,6 +180,20 @@ export default function Pengguna({ pengguna, ringkasan, filters }: PenggunaProps
         );
     };
 
+    const hapusPengguna = () => {
+        if (hapusTarget === null) {
+            return;
+        }
+
+        setMenghapus(true);
+
+        router.delete(route('admin.pengguna.destroy', hapusTarget.id), {
+            preserveScroll: true,
+            onSuccess: () => setHapusTarget(null),
+            onFinish: () => setMenghapus(false),
+        });
+    };
+
     const simpanStaff: FormEventHandler = (event) => {
         event.preventDefault();
 
@@ -203,6 +224,16 @@ export default function Pengguna({ pengguna, ringkasan, filters }: PenggunaProps
                 >
                     <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                     <p>{flash.success}</p>
+                </div>
+            )}
+
+            {flash?.error && (
+                <div
+                    role="alert"
+                    className="border-tk-danger/35 bg-tk-danger/10 text-tk-danger mb-5 flex items-start gap-3 rounded-[18px] border px-4 py-3 text-sm font-medium"
+                >
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                    <p>{flash.error}</p>
                 </div>
             )}
 
@@ -387,6 +418,33 @@ export default function Pengguna({ pengguna, ringkasan, filters }: PenggunaProps
                             <InputError message={form.errors.role} className="text-tk-danger" />
                         </div>
 
+                        {form.data.role === 'spesialis' && (
+                            <div className="grid gap-2">
+                                <Label htmlFor="staff-spesialisasi">Spesialisasi</Label>
+                                <div className="relative">
+                                    <select
+                                        id="staff-spesialisasi"
+                                        required
+                                        value={form.data.spesialisasi}
+                                        onChange={(event) => form.setData('spesialisasi', event.target.value)}
+                                        disabled={form.processing}
+                                        className={cn(authInputClass, 'appearance-none pr-10')}
+                                    >
+                                        {pilihanSpesialisasi.map((spesialisasi) => (
+                                            <option key={spesialisasi} value={spesialisasi}>
+                                                {spesialisasi}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown
+                                        className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-[var(--tk-muted)]"
+                                        aria-hidden="true"
+                                    />
+                                </div>
+                                <InputError message={form.errors.spesialisasi} className="text-tk-danger" />
+                            </div>
+                        )}
+
                         <PasswordField
                             id="staff-password"
                             label="Password awal"
@@ -545,6 +603,18 @@ export default function Pengguna({ pengguna, ringkasan, filters }: PenggunaProps
                                                 )}
                                             </div>
                                         )}
+
+                                        {!isSelf && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setHapusTarget(user)}
+                                                disabled={isProcessing}
+                                                aria-label={`Hapus akun ${user.name}`}
+                                                className="border-tk-danger/30 text-tk-danger hover:bg-tk-danger/10 inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border transition-colors disabled:opacity-50"
+                                            >
+                                                <Trash2 className="size-4" aria-hidden="true" />
+                                            </button>
+                                        )}
                                     </div>
                                 </li>
                             );
@@ -552,6 +622,51 @@ export default function Pengguna({ pengguna, ringkasan, filters }: PenggunaProps
                     </ul>
                 )}
             </section>
+
+            <Dialog
+                open={hapusTarget !== null}
+                onOpenChange={(next) => {
+                    if (!next && !menghapus) {
+                        setHapusTarget(null);
+                    }
+                }}
+            >
+                <DialogContent className="w-[calc(100%-1.5rem)] rounded-[24px] border-[var(--tk-glass-border)] bg-[var(--tk-page)] text-[var(--tk-text)] sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                            <span className="bg-tk-danger/15 text-tk-danger grid size-9 place-items-center rounded-full">
+                                <Trash2 className="size-4" aria-hidden="true" />
+                            </span>
+                            Hapus akun
+                        </DialogTitle>
+                        <DialogDescription className="text-[var(--tk-muted)]">
+                            Akun <span className="font-semibold text-[var(--tk-text)]">{hapusTarget?.name}</span> ({hapusTarget?.email}) akan dihapus
+                            permanen. Data dokter dan jadwal yang terhubung juga ikut terhapus. Tindakan ini tidak dapat dibatalkan.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <DialogFooter className="gap-2">
+                        <DialogClose asChild>
+                            <button
+                                type="button"
+                                disabled={menghapus}
+                                className="min-h-11 rounded-full border border-[var(--tk-glass-border)] px-5 text-sm font-semibold disabled:opacity-50"
+                            >
+                                Batal
+                            </button>
+                        </DialogClose>
+                        <button
+                            type="button"
+                            onClick={hapusPengguna}
+                            disabled={menghapus}
+                            className="bg-tk-danger inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold text-white disabled:opacity-60"
+                        >
+                            {menghapus && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
+                            {menghapus ? 'Menghapus...' : 'Hapus akun'}
+                        </button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </AdminAppLayout>
     );
 }

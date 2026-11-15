@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\Dokter;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -80,6 +81,7 @@ class PenggunaController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)],
             'role' => ['required', 'string', Rule::in(self::STAFF_ROLES)],
+            'spesialisasi' => ['nullable', 'string', Rule::in(Dokter::SPESIALISASI), 'required_if:role,spesialis'],
             'password' => ['required', 'confirmed', Password::defaults()],
         ], [
             'name.required' => 'Nama lengkap wajib diisi.',
@@ -88,6 +90,8 @@ class PenggunaController extends Controller
             'email.unique' => 'Email sudah digunakan akun lain.',
             'role.required' => 'Pilih peran staff.',
             'role.in' => 'Peran staff harus perawat, dokter umum, atau dokter spesialis.',
+            'spesialisasi.required_if' => 'Spesialisasi wajib dipilih untuk dokter spesialis.',
+            'spesialisasi.in' => 'Spesialisasi tidak valid.',
             'password.required' => 'Password wajib diisi.',
             'password.confirmed' => 'Konfirmasi password tidak sama.',
             'password.min' => 'Password minimal 8 karakter.',
@@ -101,6 +105,8 @@ class PenggunaController extends Controller
         ]);
 
         $user->forceFill(['email_verified_at' => now()])->save();
+
+        Dokter::pastikanUntuk($user, $validated['spesialisasi'] ?? null);
 
         AuditLog::catat(
             $request->user(),
@@ -132,6 +138,8 @@ class PenggunaController extends Controller
 
         $user->update(['role' => $validated['role']]);
 
+        $dokter = Dokter::pastikanUntuk($user);
+
         AuditLog::catat(
             $request->user(),
             'mengubah',
@@ -140,7 +148,39 @@ class PenggunaController extends Controller
             "Mengubah peran {$user->name} menjadi {$this->roleLabel($user->role)}.",
         );
 
-        return back()->with('success', "Peran {$user->name} diubah menjadi {$this->roleLabel($user->role)}.");
+        $pesan = "Peran {$user->name} diubah menjadi {$this->roleLabel($user->role)}.";
+
+        if ($dokter !== null && $user->role === 'spesialis' && blank($dokter->spesialisasi)) {
+            $pesan .= ' Lengkapi spesialisasi dokter di menu Data dokter.';
+        }
+
+        return back()->with('success', $pesan);
+    }
+
+    /**
+     * Hapus akun pengguna yang terdaftar.
+     */
+    public function destroy(Request $request, User $user): RedirectResponse
+    {
+        if ($request->user()->is($user)) {
+            abort(403, 'Anda tidak dapat menghapus akun sendiri.');
+        }
+
+        $nama = $user->name;
+        $peran = $this->roleLabel($user->role);
+
+        AuditLog::catat(
+            $request->user(),
+            'menghapus',
+            'pengguna',
+            (string) $user->id,
+            "Menghapus akun {$nama} ({$peran}).",
+        );
+
+        $user->delete();
+
+        return to_route('admin.pengguna')
+            ->with('success', "Akun {$nama} berhasil dihapus.");
     }
 
     private function roleLabel(string $role): string

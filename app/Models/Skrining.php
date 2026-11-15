@@ -62,4 +62,16 @@ class Skrining extends Model
     {
         return $this->belongsTo(User::class, 'perawat_id');
     }
+
+    /**
+     * Tingkat prioritas untuk tampilan kartu review: merah, kuning, atau normal.
+     */
+    public function tingkatPrioritas(): string
+    {
+        if ($this->prioritas === self::PRIORITAS_DARURAT || $this->tanda_bahaya) {
+            return 'merah';
+        }
+
+        return $this->prioritas === self::PRIORITAS_SEDANG ? 'kuning' : 'normal';
+    }
 }
