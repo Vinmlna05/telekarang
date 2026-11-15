@@ -1,19 +1,6 @@
-import { Head, Link, usePage } from '@inertiajs/react';
-import {
-    ArrowLeft,
-    CalendarDays,
-    CheckCircle2,
-    ChevronRight,
-    Clock,
-    Info,
-    MapPin,
-    Send,
-    ShieldCheck,
-    Stethoscope,
-    UserRound,
-    Wifi,
-} from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { ArrowLeft, CalendarDays, CheckCircle2, Clock, Info, MapPin, Send, ShieldCheck, Stethoscope, UserRound, Wifi } from 'lucide-react';
+import { useState, type FormEvent } from 'react';
 
 import InputError from '@/components/input-error';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -31,8 +18,6 @@ interface KonsultasiBaruProps {
 type FormErrors = Partial<Record<'dokter' | 'slot' | 'keluhan' | 'persetujuan', string>>;
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
-const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77F_100%)]';
-const nomorPermintaan = 'KNS-2026-0142';
 
 const statusMeta: Record<StatusJadwal, { label: string; tone: string }> = {
     tersedia: {
@@ -102,18 +87,12 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
     const [durasi, setDurasi] = useState(durasiKeluhan[1]);
     const [setuju, setSetuju] = useState(false);
     const [errors, setErrors] = useState<FormErrors>({});
-    const [berhasil, setBerhasil] = useState(false);
+    const [mengirim, setMengirim] = useState(false);
 
     const dokterTerpilih = dokterId ? (dokter.find((item) => item.id === dokterId) ?? null) : null;
     const dokterTersaring = filterSpesialisasi === 'Semua' ? dokter : dokter.filter((item) => item.spesialisasi === filterSpesialisasi);
     const jumlahDokterTersedia = dokterTersaring.filter((dokter) => dokter.status === 'tersedia').length;
     const namaPasien = auth.user.name;
-
-    useEffect(() => {
-        if (berhasil) {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-    }, [berhasil]);
 
     function pilihSpesialisasi(item: Spesialisasi | 'Semua') {
         setFilterSpesialisasi(item);
@@ -162,115 +141,30 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
             return;
         }
 
-        setBerhasil(true);
-    }
-
-    function buatPermintaanLagi() {
-        setBerhasil(false);
-        setFilterSpesialisasi('Semua');
-        setDokterId(null);
-        setSlot('');
-        setKeluhan('');
-        setDurasi(durasiKeluhan[1]);
-        setSetuju(false);
-        setErrors({});
-    }
-
-    if (berhasil && dokterTerpilih && slot) {
-        return (
-            <PasienAppLayout
-                active="beranda"
-                title="Permintaan terkirim"
-                description="Permintaan konsultasi Anda sudah masuk antrean skrining perawat."
-            >
-                <Head title="Permintaan terkirim" />
-
-                <div className="mx-auto grid w-full max-w-2xl gap-5">
-                    <section className={cn('overflow-hidden rounded-[28px]', glass)}>
-                        <div className={cn('relative overflow-hidden px-6 py-8 text-center md:px-8', bannerGradient)}>
-                            <div
-                                aria-hidden="true"
-                                className="pointer-events-none absolute -top-10 -right-6 size-36 rounded-full bg-white/25 blur-xl"
-                            />
-                            <div className="relative">
-                                <span className="bg-tk-deep/10 text-tk-deep mx-auto grid size-16 place-items-center rounded-full">
-                                    <CheckCircle2 className="size-8" aria-hidden="true" />
-                                </span>
-                                <p className="text-tk-deep/70 mt-4 text-[10px] font-bold tracking-[0.16em] uppercase">Permintaan diterima</p>
-                                <h1 className="text-tk-deep mt-1 text-2xl leading-tight font-extrabold">Permintaan konsultasi terkirim</h1>
-                                <p className="text-tk-deep/75 mx-auto mt-2 max-w-md text-xs leading-relaxed">
-                                    Nomor permintaan <span className="font-bold">{nomorPermintaan}</span>. Perawat akan melakukan skrining saat Anda
-                                    datang ke puskesmas.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="p-5 md:p-6">
-                            <div className="flex items-center justify-between gap-3">
-                                <p className="text-[11px] font-semibold text-[var(--tk-muted)]">Status permintaan</p>
-                                <span className="bg-tk-warning/15 text-tk-warning inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold">
-                                    <Clock className="size-3" aria-hidden="true" />
-                                    Menunggu skrining
-                                </span>
-                            </div>
-
-                            <dl className="mt-4 grid gap-3 rounded-2xl bg-[var(--tk-page-alt)] p-4 text-xs sm:grid-cols-2">
-                                <div>
-                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Dokter spesialis</dt>
-                                    <dd className="mt-1 font-bold">{dokterTerpilih.nama}</dd>
-                                    <dd className="text-[11px] text-[var(--tk-muted)]">Spesialis {dokterTerpilih.spesialisasi}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Jadwal dipilih</dt>
-                                    <dd className="mt-1 font-bold">
-                                        {dokterTerpilih.hariTerdekat}, {slot} WIT
-                                    </dd>
-                                    <dd className="text-[11px] text-[var(--tk-muted)]">{dokterTerpilih.faskes}</dd>
-                                </div>
-                                <div className="sm:col-span-2">
-                                    <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Keluhan</dt>
-                                    <dd className="mt-1 leading-relaxed">{keluhan.trim()}</dd>
-                                </div>
-                            </dl>
-
-                            <div className="mt-5">
-                                <h2 className="text-[13px] font-bold">Yang terjadi selanjutnya</h2>
-                                <ol className="mt-3 grid gap-3">
-                                    {langkahSetelahKirim.map((langkah, index) => (
-                                        <li key={langkah} className="flex items-start gap-3">
-                                            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--tk-page-alt)] text-[10px] font-bold text-[var(--tk-muted)]">
-                                                {index + 1}
-                                            </span>
-                                            <p className="pt-0.5 text-[11px] leading-relaxed text-[var(--tk-muted)]">{langkah}</p>
-                                        </li>
-                                    ))}
-                                </ol>
-                            </div>
-
-                            <p className="mt-5 rounded-xl bg-[var(--tk-page-alt)] px-3 py-2.5 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                Permintaan ini tercatat sebagai data demo pada prototipe TeleKarang dan belum terhubung ke fasilitas kesehatan nyata.
-                            </p>
-
-                            <div className="mt-5 grid gap-2 sm:flex">
-                                <Link
-                                    href="/pasien"
-                                    className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-5 text-xs font-bold transition-colors"
-                                >
-                                    Kembali ke beranda
-                                    <ChevronRight className="size-3.5" aria-hidden="true" />
-                                </Link>
-                                <button
-                                    type="button"
-                                    onClick={buatPermintaanLagi}
-                                    className="inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--tk-glass-border)] px-5 text-xs font-semibold text-[var(--tk-text)] transition-colors hover:bg-[var(--tk-page-alt)]"
-                                >
-                                    Buat permintaan lain
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-            </PasienAppLayout>
+        setMengirim(true);
+        router.post(
+            route('pasien.konsultasi.store'),
+            {
+                dokter: dokterTerpilih?.id,
+                slot,
+                hari: dokterTerpilih?.hariTerdekat,
+                keluhan: keluhan.trim(),
+                durasi,
+                persetujuan: setuju,
+            },
+            {
+                preserveScroll: true,
+                onError: (serverErrors) =>
+                    setErrors((previous) => ({
+                        ...previous,
+                        ...(serverErrors.dokter ? { dokter: serverErrors.dokter } : {}),
+                        ...(serverErrors.slot ? { slot: serverErrors.slot } : {}),
+                        ...(serverErrors.hari ? { slot: serverErrors.hari } : {}),
+                        ...(serverErrors.keluhan ? { keluhan: serverErrors.keluhan } : {}),
+                        ...(serverErrors.persetujuan ? { persetujuan: serverErrors.persetujuan } : {}),
+                    })),
+                onFinish: () => setMengirim(false),
+            },
         );
     }
 
@@ -581,10 +475,11 @@ export default function KonsultasiBaru({ dokter, dokterAwal, jadwalAwal }: Konsu
                             <div className="mt-4 grid gap-2 sm:flex sm:items-center">
                                 <button
                                     type="submit"
-                                    className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-xs font-bold transition-colors"
+                                    disabled={mengirim}
+                                    className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-xs font-bold transition-colors disabled:pointer-events-none disabled:opacity-60"
                                 >
                                     <Send className="size-4" aria-hidden="true" />
-                                    Kirim permintaan konsultasi
+                                    {mengirim ? 'Mengirim permintaan...' : 'Kirim permintaan konsultasi'}
                                 </button>
                                 <Link
                                     href="/pasien/jadwal"

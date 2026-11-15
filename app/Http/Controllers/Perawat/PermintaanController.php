@@ -3,150 +3,73 @@
 namespace App\Http\Controllers\Perawat;
 
 use App\Http\Controllers\Controller;
+use App\Models\Konsultasi;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class PermintaanController extends Controller
 {
+    /**
+     * Status konsultasi yang ditampilkan pada antrean perawat.
+     *
+     * @var list<string>
+     */
+    private const STATUS_ANTREAN = [
+        'MENUNGGU_SKRINING',
+        'SKRINING_SELESAI',
+        'MENUNGGU_SPESIALIS',
+        'KEDALUWARSA',
+    ];
+
+    /**
+     * @var list<string>
+     */
+    private const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+    /**
+     * @var list<string>
+     */
+    private const BULAN = [
+        1 => 'Januari',
+        2 => 'Februari',
+        3 => 'Maret',
+        4 => 'April',
+        5 => 'Mei',
+        6 => 'Juni',
+        7 => 'Juli',
+        8 => 'Agustus',
+        9 => 'September',
+        10 => 'Oktober',
+        11 => 'November',
+        12 => 'Desember',
+    ];
+
     public function __invoke(): Response
     {
-        $permintaan = [
-            [
-                'id' => 1,
-                'nama' => 'Siti Rahmawati',
-                'usia' => 34,
-                'jenisKelamin' => 'P',
-                'nik' => '7171010190340001',
-                'waktuMasuk' => 'Hari ini, 08.30',
-                'keluhan' => 'Demam dan batuk berdahak sejak tiga hari.',
-                'spesialisasi' => 'Penyakit Dalam',
-                'dokter' => 'dr. Bima Pratama, Sp.PD',
-                'jadwal' => 'Hari ini · 10.00–11.00 WITA',
-                'status' => 'MENUNGGU_SKRINING',
-                'prioritas' => 'normal',
-                'sumber' => 'Akun pasien',
-            ],
-            [
-                'id' => 2,
-                'nama' => 'Andi Saputra',
-                'usia' => 52,
-                'jenisKelamin' => 'L',
-                'nik' => '7171010150520002',
-                'waktuMasuk' => 'Hari ini, 09.15',
-                'keluhan' => 'Sesak berat dan nyeri dada sejak pagi.',
-                'spesialisasi' => 'Penyakit Dalam',
-                'dokter' => 'dr. Bima Pratama, Sp.PD',
-                'jadwal' => 'Hari ini · 10.00–11.00 WITA',
-                'status' => 'MENUNGGU_SKRINING',
-                'prioritas' => 'merah',
-                'sumber' => 'Akun pasien',
-            ],
-            [
-                'id' => 3,
-                'nama' => 'Maria Lestari',
-                'usia' => 27,
-                'jenisKelamin' => 'P',
-                'nik' => '7171010220270003',
-                'waktuMasuk' => 'Hari ini, 10.00',
-                'keluhan' => 'Gatal dan ruam di lengan sejak seminggu.',
-                'spesialisasi' => 'Kulit',
-                'dokter' => 'dr. Rina Kartika, Sp.KK',
-                'jadwal' => 'Hari ini · 13.00–14.00 WITA',
-                'status' => 'SKRINING_SELESAI',
-                'prioritas' => 'normal',
-                'sumber' => 'Didaftarkan perawat',
-            ],
-            [
-                'id' => 4,
-                'nama' => 'Yohanes Kurniawan',
-                'usia' => 61,
-                'jenisKelamin' => 'L',
-                'nik' => '7171010170610004',
-                'waktuMasuk' => 'Hari ini, 10.45',
-                'keluhan' => 'Kontrol hipertensi dan pusing berulang.',
-                'spesialisasi' => 'Penyakit Dalam',
-                'dokter' => 'dr. Bima Pratama, Sp.PD',
-                'jadwal' => 'Besok · 09.00–10.00 WITA',
-                'status' => 'MENUNGGU_SKRINING',
-                'prioritas' => 'normal',
-                'sumber' => 'Didaftarkan perawat',
-            ],
-            [
-                'id' => 5,
-                'nama' => 'Nur Aisyah',
-                'usia' => 7,
-                'jenisKelamin' => 'P',
-                'nik' => '7171010240070005',
-                'waktuMasuk' => 'Hari ini, 11.10',
-                'keluhan' => 'Demam tinggi sejak dua hari dan sulit makan.',
-                'spesialisasi' => 'Anak',
-                'dokter' => 'dr. Ayu Lestari, Sp.A',
-                'jadwal' => 'Hari ini · 11.00–12.00 WITA',
-                'status' => 'SKRINING_SELESAI',
-                'prioritas' => 'normal',
-                'sumber' => 'Akun pasien',
-            ],
-            [
-                'id' => 6,
-                'nama' => 'Markus Tarigan',
-                'usia' => 45,
-                'jenisKelamin' => 'L',
-                'nik' => '7171010130450006',
-                'waktuMasuk' => 'Hari ini, 11.35',
-                'keluhan' => 'Luka bakar ringan pada tangan kanan.',
-                'spesialisasi' => 'Kulit',
-                'dokter' => 'dr. Rina Kartika, Sp.KK',
-                'jadwal' => 'Besok · 10.00–11.00 WITA',
-                'status' => 'MENUNGGU_SKRINING',
-                'prioritas' => 'normal',
-                'sumber' => 'Akun pasien',
-            ],
-            [
-                'id' => 7,
-                'nama' => 'Dewi Anggraini',
-                'usia' => 38,
-                'jenisKelamin' => 'P',
-                'nik' => '7171010210380007',
-                'waktuMasuk' => 'Hari ini, 12.20',
-                'keluhan' => 'Nyeri ulu hati dan mual sejak seminggu.',
-                'spesialisasi' => 'Penyakit Dalam',
-                'dokter' => 'dr. Bima Pratama, Sp.PD',
-                'jadwal' => 'Hari ini · 14.00–15.00 WITA',
-                'status' => 'MENUNGGU_SPESIALIS',
-                'prioritas' => 'normal',
-                'sumber' => 'Didaftarkan perawat',
-            ],
-            [
-                'id' => 8,
-                'nama' => 'Paulus Rumbewas',
-                'usia' => 70,
-                'jenisKelamin' => 'L',
-                'nik' => '7171010100700008',
-                'waktuMasuk' => 'Hari ini, 13.05',
-                'keluhan' => 'Sesak memberat dan tidak mampu berbaring.',
-                'spesialisasi' => 'Penyakit Dalam',
-                'dokter' => 'dr. Bima Pratama, Sp.PD',
-                'jadwal' => 'Hari ini · 10.00–11.00 WITA',
-                'status' => 'MENUNGGU_SPESIALIS',
-                'prioritas' => 'merah',
-                'sumber' => 'Akun pasien',
-            ],
-            [
-                'id' => 9,
-                'nama' => 'Rosalina Wenda',
-                'usia' => 31,
-                'jenisKelamin' => 'P',
-                'nik' => '7171010180310009',
-                'waktuMasuk' => 'Kemarin, 15.00',
-                'keluhan' => 'Nyeri perut kanan bawah sejak kemarin.',
-                'spesialisasi' => 'Penyakit Dalam',
-                'dokter' => 'dr. Bima Pratama, Sp.PD',
-                'jadwal' => 'Kemarin · 15.00–16.00 WITA',
-                'status' => 'KEDALUWARSA',
-                'prioritas' => 'normal',
-                'sumber' => 'Akun pasien',
-            ],
-        ];
+        $permintaan = Konsultasi::query()
+            ->with(['pasien', 'dokterSpesialis', 'skrining', 'pembuat'])
+            ->whereIn('status', self::STATUS_ANTREAN)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (Konsultasi $konsultasi) => [
+                'id' => $konsultasi->id,
+                'nama' => $konsultasi->pasien?->nama ?? 'Pasien',
+                'usia' => $konsultasi->pasien?->tgl_lahir?->age ?? 0,
+                'jenisKelamin' => str_starts_with($konsultasi->pasien?->jenis_kelamin ?? '', 'L') ? 'L' : 'P',
+                'nik' => $konsultasi->pasien?->nik ?? '-',
+                'waktuMasuk' => $this->formatWaktuMasuk($konsultasi->created_at),
+                'keluhan' => $konsultasi->keluhan,
+                'spesialisasi' => $konsultasi->dokterSpesialis?->spesialisasi ?? 'Spesialis',
+                'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter spesialis',
+                'jadwal' => $this->formatTanggal($konsultasi->tanggal).' · '.$konsultasi->tanggal->format('H.i').' WIT',
+                'status' => $konsultasi->status,
+                'prioritas' => $konsultasi->prioritasKartu(),
+                'sumber' => $konsultasi->pembuat?->role === 'pasien' ? 'Akun pasien' : 'Didaftarkan perawat',
+            ])
+            ->values()
+            ->all();
 
         $koleksi = collect($permintaan);
 
@@ -157,9 +80,30 @@ class PermintaanController extends Controller
                 'skriningSelesai' => $koleksi->where('status', 'SKRINING_SELESAI')->count(),
                 'menungguSpesialis' => $koleksi->where('status', 'MENUNGGU_SPESIALIS')->count(),
                 'kedaluwarsa' => $koleksi->where('status', 'KEDALUWARSA')->count(),
-                'prioritasMerah' => $koleksi->where('prioritas', 'merah')->count(),
+                'prioritasDarurat' => $koleksi->where('prioritas', 'darurat')->count(),
             ],
             'permintaan' => $permintaan,
         ]);
+    }
+
+    private function formatWaktuMasuk(Carbon $tanggal): string
+    {
+        if ($tanggal->isToday()) {
+            return 'Hari ini, '.$tanggal->format('H.i');
+        }
+
+        if ($tanggal->isYesterday()) {
+            return 'Kemarin, '.$tanggal->format('H.i');
+        }
+
+        return $tanggal->format('d').' '.substr(self::BULAN[(int) $tanggal->format('n')], 0, 3).' '.$tanggal->format('Y').', '.$tanggal->format('H.i');
+    }
+
+    private function formatTanggal(Carbon $tanggal): string
+    {
+        return self::HARI[(int) $tanggal->format('w')]
+            .', '.$tanggal->format('j')
+            .' '.self::BULAN[(int) $tanggal->format('n')]
+            .' '.$tanggal->format('Y');
     }
 }

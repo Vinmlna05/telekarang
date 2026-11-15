@@ -120,4 +120,28 @@ class Konsultasi extends Model
     {
         return $this->hasOne(Skrining::class);
     }
+
+    /**
+     * Prioritas kartu: pilihan perawat setelah skrining, atau deteksi keluhan sebelum skrining.
+     */
+    public function prioritasKartu(): ?string
+    {
+        $skrining = $this->skrining;
+
+        if ($skrining !== null) {
+            if (in_array($skrining->prioritas, Skrining::PRIORITAS, true)) {
+                return $skrining->prioritas;
+            }
+
+            return $skrining->tanda_bahaya
+                ? Skrining::PRIORITAS_DARURAT
+                : Skrining::PRIORITAS_SEDANG;
+        }
+
+        $keluhan = strtolower($this->keluhan ?? '');
+
+        return str_contains($keluhan, 'sesak berat') || str_contains($keluhan, 'tidak sadar')
+            ? Skrining::PRIORITAS_DARURAT
+            : null;
+    }
 }

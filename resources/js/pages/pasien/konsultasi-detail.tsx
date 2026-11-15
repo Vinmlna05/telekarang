@@ -276,7 +276,7 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
 
     return (
         <PasienAppLayout
-            active="riwayat"
+            active="none"
             title="Detail konsultasi"
             description="Lihat status permintaan, hasil skrining perawat, keputusan dokter spesialis, dan percakapan konsultasi Anda."
         >

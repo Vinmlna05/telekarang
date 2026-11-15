@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     CheckCircle2,
@@ -20,9 +20,11 @@ import { useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
+import { type SharedData } from '@/types';
 
 type StatusPermintaan = 'MENUNGGU_SKRINING' | 'SKRINING_SELESAI' | 'MENUNGGU_SPESIALIS' | 'KEDALUWARSA';
 type StatusFilter = 'SEMUA' | StatusPermintaan;
+type PrioritasKartu = 'darurat' | 'sedang' | null;
 
 interface PermintaanItem {
     id: number;
@@ -36,7 +38,7 @@ interface PermintaanItem {
     dokter: string;
     jadwal: string;
     status: StatusPermintaan;
-    prioritas: 'normal' | 'merah';
+    prioritas: PrioritasKartu;
     sumber: string;
 }
 
@@ -47,7 +49,7 @@ interface PermintaanPerawatProps {
         skriningSelesai: number;
         menungguSpesialis: number;
         kedaluwarsa: number;
-        prioritasMerah: number;
+        prioritasDarurat: number;
     };
     permintaan: PermintaanItem[];
 }
@@ -66,6 +68,23 @@ const statusMeta: Record<StatusPermintaan, { label: string; tone: string; icon: 
     },
     MENUNGGU_SPESIALIS: { label: 'Menunggu spesialis', tone: 'bg-tk-info/15 text-tk-info', icon: Stethoscope },
     KEDALUWARSA: { label: 'Kedaluwarsa', tone: 'bg-tk-danger/10 text-tk-danger', icon: AlertTriangle },
+};
+
+const prioritasMeta: Record<'darurat' | 'sedang', { label: string; tone: string; card: string; bar: string; icon: LucideIcon }> = {
+    darurat: {
+        label: 'Darurat',
+        tone: 'bg-tk-danger/15 text-tk-danger',
+        card: 'border-tk-danger/40 bg-tk-danger/[0.04]',
+        bar: 'bg-tk-danger',
+        icon: AlertTriangle,
+    },
+    sedang: {
+        label: 'Sedang',
+        tone: 'bg-tk-warning/15 text-tk-warning',
+        card: 'border-tk-warning/40 bg-tk-warning/[0.04]',
+        bar: 'bg-tk-warning',
+        icon: Clock,
+    },
 };
 
 const filterStatus: Array<{ key: StatusFilter; label: string }> = [
@@ -121,30 +140,31 @@ function aksiUntuk(item: PermintaanItem): { label: string; href: string; primary
 }
 
 export default function PermintaanPerawat({ ringkasan, permintaan }: PermintaanPerawatProps) {
+    const { flash } = usePage<SharedData>().props;
     const [q, setQ] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('SEMUA');
-    const [hanyaMerah, setHanyaMerah] = useState(false);
+    const [hanyaDarurat, setHanyaDarurat] = useState(false);
 
     const hasil = useMemo(() => {
         const kataKunci = q.trim().toLowerCase();
 
         return permintaan.filter((item) => {
             const cocokStatus = statusFilter === 'SEMUA' || item.status === statusFilter;
-            const cocokPrioritas = !hanyaMerah || item.prioritas === 'merah';
+            const cocokPrioritas = !hanyaDarurat || item.prioritas === 'darurat';
             const cocokKataKunci =
                 kataKunci === '' ||
                 [item.nama, item.nik, item.keluhan, item.spesialisasi, item.dokter].some((nilai) => nilai.toLowerCase().includes(kataKunci));
 
             return cocokStatus && cocokPrioritas && cocokKataKunci;
         });
-    }, [permintaan, q, statusFilter, hanyaMerah]);
+    }, [permintaan, q, statusFilter, hanyaDarurat]);
 
-    const filterAktif = q.trim() !== '' || statusFilter !== 'SEMUA' || hanyaMerah;
+    const filterAktif = q.trim() !== '' || statusFilter !== 'SEMUA' || hanyaDarurat;
 
     const resetFilter = () => {
         setQ('');
         setStatusFilter('SEMUA');
-        setHanyaMerah(false);
+        setHanyaDarurat(false);
     };
 
     const ringkasanCards: Array<{ key: keyof PermintaanPerawatProps['ringkasan']; label: string; caption: string; icon: LucideIcon }> = [
@@ -162,9 +182,22 @@ export default function PermintaanPerawat({ ringkasan, permintaan }: PermintaanP
         >
             <Head title="Permintaan masuk" />
 
-            {ringkasan.prioritasMerah > 0 && (
+            {flash?.success && (
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className="border-tk-green-500/35 bg-tk-green-500/10 mb-5 flex items-start gap-3 rounded-[20px] border p-4"
+                >
+                    <span className="bg-tk-green-500/15 text-tk-green-500 dark:text-tk-accent grid size-9 shrink-0 place-items-center rounded-full">
+                        <CheckCircle2 className="size-4" aria-hidden="true" />
+                    </span>
+                    <p className="text-xs leading-relaxed text-[var(--tk-text)]">{flash.success}</p>
+                </div>
+            )}
+
+            {ringkasan.prioritasDarurat > 0 && (
                 <section
-                    aria-label="Peringatan prioritas merah"
+                    aria-label="Peringatan prioritas darurat"
                     className={cn('relative mb-5 overflow-hidden rounded-[24px] p-5 md:p-6', bannerGradient)}
                 >
                     <div className="pointer-events-none absolute -top-10 -right-6 size-36 rounded-full bg-white/20 blur-xl" aria-hidden="true" />
@@ -177,7 +210,7 @@ export default function PermintaanPerawat({ ringkasan, permintaan }: PermintaanP
                             <div>
                                 <p className="text-tk-deep/70 text-[11px] font-semibold tracking-[0.14em] uppercase">Perlu perhatian</p>
                                 <p className="text-tk-deep mt-1 text-lg leading-tight font-extrabold">
-                                    {ringkasan.prioritasMerah} permintaan dengan prioritas merah.
+                                    {ringkasan.prioritasDarurat} permintaan dengan prioritas darurat.
                                 </p>
                                 <p className="text-tk-deep/75 mt-1 max-w-[52ch] text-xs">
                                     Segera lengkapi skrining dan koordinasikan dengan dokter umum. Tanda bahaya harus ditangani lebih dulu.
@@ -190,7 +223,7 @@ export default function PermintaanPerawat({ ringkasan, permintaan }: PermintaanP
                             onClick={() => {
                                 setQ('');
                                 setStatusFilter('SEMUA');
-                                setHanyaMerah(true);
+                                setHanyaDarurat(true);
                             }}
                             className="bg-tk-deep text-tk-mint inline-flex min-h-10 shrink-0 items-center gap-1.5 self-start rounded-full px-5 text-xs font-semibold sm:self-auto"
                         >
@@ -236,24 +269,24 @@ export default function PermintaanPerawat({ ringkasan, permintaan }: PermintaanP
                     <div className="flex flex-wrap items-center gap-2">
                         <button
                             type="button"
-                            aria-pressed={hanyaMerah}
-                            onClick={() => setHanyaMerah((value) => !value)}
+                            aria-pressed={hanyaDarurat}
+                            onClick={() => setHanyaDarurat((value) => !value)}
                             className={cn(
                                 'inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[11px] font-semibold transition-colors',
-                                hanyaMerah
+                                hanyaDarurat
                                     ? 'bg-tk-danger border-transparent text-white'
                                     : 'border-[var(--tk-glass-border)] text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
                             )}
                         >
                             <AlertTriangle className="size-3.5" aria-hidden="true" />
-                            Prioritas merah
+                            Prioritas darurat
                             <span
                                 className={cn(
                                     'rounded-full px-1.5 py-0.5 text-[9px]',
-                                    hanyaMerah ? 'bg-white/20 text-white' : 'bg-tk-danger/10 text-tk-danger',
+                                    hanyaDarurat ? 'bg-white/20 text-white' : 'bg-tk-danger/10 text-tk-danger',
                                 )}
                             >
-                                {ringkasan.prioritasMerah}
+                                {ringkasan.prioritasDarurat}
                             </span>
                         </button>
 
@@ -322,19 +355,16 @@ export default function PermintaanPerawat({ ringkasan, permintaan }: PermintaanP
                             {hasil.map((item) => {
                                 const status = statusMeta[item.status];
                                 const StatusIcon = status.icon;
-                                const isPrioritas = item.prioritas === 'merah';
+                                const prioritas = item.prioritas ? prioritasMeta[item.prioritas] : null;
+                                const PrioritasIcon = prioritas?.icon;
                                 const aksi = aksiUntuk(item);
 
                                 return (
                                     <article
                                         key={item.id}
-                                        className={cn(
-                                            'relative overflow-hidden rounded-[20px] p-4 lg:p-5',
-                                            glass,
-                                            isPrioritas && 'border-tk-danger/40 bg-tk-danger/[0.04]',
-                                        )}
+                                        className={cn('relative overflow-hidden rounded-[20px] p-4 lg:p-5', glass, prioritas?.card)}
                                     >
-                                        {isPrioritas && <span aria-hidden="true" className="bg-tk-danger absolute inset-y-0 left-0 w-1" />}
+                                        {prioritas && <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1', prioritas.bar)} />}
 
                                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                             <div className="flex min-w-0 items-start gap-3">
@@ -345,10 +375,15 @@ export default function PermintaanPerawat({ ringkasan, permintaan }: PermintaanP
                                                 <div className="min-w-0">
                                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                         <p className="truncate text-sm font-bold">{item.nama}</p>
-                                                        {isPrioritas && (
-                                                            <span className="bg-tk-danger/15 text-tk-danger inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
-                                                                <AlertTriangle className="size-3" aria-hidden="true" />
-                                                                Prioritas merah
+                                                        {prioritas && PrioritasIcon && (
+                                                            <span
+                                                                className={cn(
+                                                                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                                                                    prioritas.tone,
+                                                                )}
+                                                            >
+                                                                <PrioritasIcon className="size-3" aria-hidden="true" />
+                                                                Prioritas {prioritas.label.toLowerCase()}
                                                             </span>
                                                         )}
                                                         <span className="inline-flex items-center gap-1 rounded-full bg-[var(--tk-page-alt)] px-2 py-0.5 text-[10px] font-semibold text-[var(--tk-muted)]">

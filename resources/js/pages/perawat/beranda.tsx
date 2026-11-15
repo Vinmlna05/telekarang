@@ -15,6 +15,7 @@ import {
     TrendingUp,
     Users,
     Wifi,
+    type LucideIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -23,6 +24,7 @@ import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
 
 type StatusKonsultasi = 'MENUNGGU_SKRINING' | 'SKRINING_SELESAI' | 'MENUNGGU_SPESIALIS';
+type PrioritasKartu = 'darurat' | 'sedang' | null;
 
 interface AntreanItem {
     id: number;
@@ -32,7 +34,7 @@ interface AntreanItem {
     waktu: string;
     keluhan: string;
     status: StatusKonsultasi;
-    prioritas: 'normal' | 'merah';
+    prioritas: PrioritasKartu;
 }
 
 interface TindakLanjutItem {
@@ -61,6 +63,23 @@ const statusMeta: Record<StatusKonsultasi, { label: string; tone: string }> = {
     MENUNGGU_SKRINING: { label: 'Belum diskrining', tone: 'bg-tk-warning/15 text-tk-warning' },
     SKRINING_SELESAI: { label: 'Skrining selesai', tone: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent' },
     MENUNGGU_SPESIALIS: { label: 'Menunggu spesialis', tone: 'bg-tk-info/15 text-tk-info' },
+};
+
+const prioritasMeta: Record<'darurat' | 'sedang', { label: string; tone: string; card: string; bar: string; icon: LucideIcon }> = {
+    darurat: {
+        label: 'Darurat',
+        tone: 'bg-tk-danger/15 text-tk-danger',
+        card: 'border-tk-danger/40 bg-tk-danger/[0.04]',
+        bar: 'bg-tk-danger',
+        icon: AlertTriangle,
+    },
+    sedang: {
+        label: 'Sedang',
+        tone: 'bg-tk-warning/15 text-tk-warning',
+        card: 'border-tk-warning/40 bg-tk-warning/[0.04]',
+        bar: 'bg-tk-warning',
+        icon: Clock,
+    },
 };
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
@@ -223,18 +242,15 @@ export default function BerandaPerawat({ ringkasan, antrean, tindakLanjut }: Ber
                         <div className="grid gap-3">
                             {antrean.map((item) => {
                                 const status = statusMeta[item.status];
-                                const isPrioritas = item.prioritas === 'merah';
+                                const prioritas = item.prioritas ? prioritasMeta[item.prioritas] : null;
+                                const PrioritasIcon = prioritas?.icon;
 
                                 return (
                                     <article
                                         key={item.id}
-                                        className={cn(
-                                            'relative overflow-hidden rounded-[20px] p-4 lg:p-5',
-                                            glass,
-                                            isPrioritas && 'border-tk-danger/40 bg-tk-danger/[0.04]',
-                                        )}
+                                        className={cn('relative overflow-hidden rounded-[20px] p-4 lg:p-5', glass, prioritas?.card)}
                                     >
-                                        {isPrioritas && <span aria-hidden="true" className="bg-tk-danger absolute inset-y-0 left-0 w-1" />}
+                                        {prioritas && <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1', prioritas.bar)} />}
 
                                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                                             <div className="flex min-w-0 items-start gap-3 lg:w-[32%]">
@@ -249,10 +265,15 @@ export default function BerandaPerawat({ ringkasan, antrean, tindakLanjut }: Ber
                                                 <div className="min-w-0">
                                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                         <p className="truncate text-sm font-bold">{item.nama}</p>
-                                                        {isPrioritas && (
-                                                            <span className="bg-tk-danger/15 text-tk-danger inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
-                                                                <AlertTriangle className="size-3" aria-hidden="true" />
-                                                                Prioritas merah
+                                                        {prioritas && PrioritasIcon && (
+                                                            <span
+                                                                className={cn(
+                                                                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                                                                    prioritas.tone,
+                                                                )}
+                                                            >
+                                                                <PrioritasIcon className="size-3" aria-hidden="true" />
+                                                                Prioritas {prioritas.label.toLowerCase()}
                                                             </span>
                                                         )}
                                                     </div>

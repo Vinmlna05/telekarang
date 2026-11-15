@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import {
     AlertCircle,
     ArrowLeft,
@@ -23,14 +23,14 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import InputError from '@/components/input-error';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { jadwalDokter, spesialisasiFilters, type Spesialisasi, type StatusJadwal } from '@/data/jadwal-dokter';
+import { spesialisasiFilters, type DokterSpesialis, type Spesialisasi, type StatusJadwal } from '@/data/jadwal-dokter';
 import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
 
 interface PasienRingkas {
     id: number;
     nama: string;
-    usia: number;
+    usia: number | null;
     jenisKelamin: string;
     nik: string;
     noRm: string;
@@ -39,8 +39,32 @@ interface PasienRingkas {
     punyaAkun: boolean;
 }
 
+interface PermintaanTerkirim {
+    id: number;
+    nomor: string;
+    pasien: {
+        nama: string;
+        usia: number | null;
+        noRm: string;
+        punyaAkun: boolean;
+    };
+    dokter: {
+        nama: string;
+        spesialisasi: string;
+        faskes: string;
+    };
+    jadwal: {
+        hari: string;
+        slot: string;
+    };
+    keluhan: string;
+}
+
 interface KonsultasiBaruPerawatProps {
     pasien: PasienRingkas[];
+    pasienTerpilihId: number | null;
+    dokter: DokterSpesialis[];
+    permintaanTerkirim: PermintaanTerkirim | null;
 }
 
 type FilterPasien = 'SEMUA' | 'TANPA_AKUN' | 'PUNYA_AKUN';
@@ -52,8 +76,6 @@ const inputClass =
     'focus-visible:ring-tk-accent h-11 rounded-full border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] pl-10 text-sm text-[var(--tk-text)] placeholder:text-[var(--tk-muted)]';
 const textareaClass =
     'focus-visible:ring-tk-accent mt-2 min-h-32 w-full resize-none rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] px-3.5 py-3 text-xs leading-relaxed text-[var(--tk-text)] placeholder:text-[var(--tk-muted)] focus:ring-2 focus:outline-hidden';
-const nomorPermintaan = 'KNS-2026-0143';
-
 const durasiKeluhan = ['Kurang dari 1 hari', '1–3 hari', '4–7 hari', 'Lebih dari 1 minggu'];
 
 const langkahSetelahKirim = [
@@ -126,10 +148,10 @@ function InfoRow({ icon: Icon, label, value, caption }: { icon: LucideIcon; labe
     );
 }
 
-export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatProps) {
+export default function KonsultasiBaruPerawat({ pasien, pasienTerpilihId, dokter, permintaanTerkirim }: KonsultasiBaruPerawatProps) {
     const [q, setQ] = useState('');
-    const [filterPasien, setFilterPasien] = useState<FilterPasien>('TANPA_AKUN');
-    const [pasienId, setPasienId] = useState<number | null>(null);
+    const [filterPasien, setFilterPasien] = useState<FilterPasien>(pasienTerpilihId === null ? 'TANPA_AKUN' : 'SEMUA');
+    const [pasienId, setPasienId] = useState<number | null>(pasienTerpilihId);
     const [filterSpesialisasi, setFilterSpesialisasi] = useState<Spesialisasi | 'Semua'>('Semua');
     const [dokterId, setDokterId] = useState<number | null>(null);
     const [slot, setSlot] = useState('');
@@ -137,7 +159,7 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
     const [durasi, setDurasi] = useState(durasiKeluhan[1]);
     const [setuju, setSetuju] = useState(false);
     const [errors, setErrors] = useState<FormErrors>({});
-    const [berhasil, setBerhasil] = useState(false);
+    const [mengirim, setMengirim] = useState(false);
 
     const jumlahTanpaAkun = useMemo(() => pasien.filter((item) => !item.punyaAkun).length, [pasien]);
 
@@ -155,16 +177,15 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
     }, [pasien, q, filterPasien]);
 
     const pasienTerpilih = pasienId ? (pasien.find((item) => item.id === pasienId) ?? null) : null;
-    const dokterTerpilih = dokterId ? (jadwalDokter.find((item) => item.id === dokterId) ?? null) : null;
-    const dokterTersaring =
-        filterSpesialisasi === 'Semua' ? jadwalDokter : jadwalDokter.filter((dokter) => dokter.spesialisasi === filterSpesialisasi);
-    const jumlahDokterTersedia = dokterTersaring.filter((dokter) => dokter.status === 'tersedia').length;
+    const dokterTerpilih = dokterId ? (dokter.find((item) => item.id === dokterId) ?? null) : null;
+    const dokterTersaring = filterSpesialisasi === 'Semua' ? dokter : dokter.filter((item) => item.spesialisasi === filterSpesialisasi);
+    const jumlahDokterTersedia = dokterTersaring.filter((item) => item.status === 'tersedia').length;
 
     useEffect(() => {
-        if (berhasil) {
+        if (permintaanTerkirim) {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
-    }, [berhasil]);
+    }, [permintaanTerkirim]);
 
     function pilihPasien(id: number) {
         setPasienId(id);
@@ -182,14 +203,14 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
     }
 
     function pilihDokter(id: number) {
-        const dokter = jadwalDokter.find((item) => item.id === id);
+        const dipilih = dokter.find((item) => item.id === id);
 
-        if (!dokter || dokter.status !== 'tersedia' || dokter.slots.length === 0) {
+        if (!dipilih || dipilih.status !== 'tersedia' || dipilih.slots.length === 0) {
             return;
         }
 
-        setDokterId(dokter.id);
-        setSlot(dokter.slots[0]);
+        setDokterId(dipilih.id);
+        setSlot(dipilih.slots[0]);
         setErrors((previous) => ({ ...previous, dokter: undefined, slot: undefined }));
     }
 
@@ -222,27 +243,37 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
             return;
         }
 
-        setBerhasil(true);
+        if (!pasienTerpilih || !dokterTerpilih || !slot) {
+            return;
+        }
+
+        setMengirim(true);
+
+        router.post(
+            '/perawat/konsultasi',
+            {
+                pasien: pasienTerpilih.id,
+                dokter: dokterTerpilih.id,
+                slot,
+                hari: dokterTerpilih.hariTerdekat,
+                keluhan: keluhan.trim(),
+                durasi,
+                persetujuan: setuju,
+            },
+            {
+                preserveScroll: true,
+                onError: (serverErrors) => {
+                    setErrors((previous) => ({ ...previous, ...(serverErrors as FormErrors) }));
+                },
+                onFinish: () => setMengirim(false),
+            },
+        );
     }
 
-    function buatPermintaanLagi() {
-        setBerhasil(false);
-        setQ('');
-        setFilterPasien('TANPA_AKUN');
-        setPasienId(null);
-        setFilterSpesialisasi('Semua');
-        setDokterId(null);
-        setSlot('');
-        setKeluhan('');
-        setDurasi(durasiKeluhan[1]);
-        setSetuju(false);
-        setErrors({});
-    }
-
-    if (berhasil && pasienTerpilih && dokterTerpilih && slot) {
+    if (permintaanTerkirim) {
         return (
             <PerawatAppLayout
-                active="antrean"
+                active={null}
                 title="Permintaan terkirim"
                 description="Permintaan konsultasi pasien sudah masuk antrean skrining perawat."
             >
@@ -262,8 +293,8 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
                                 <p className="text-tk-deep/70 mt-4 text-[10px] font-bold tracking-[0.16em] uppercase">Permintaan diterima</p>
                                 <h1 className="text-tk-deep mt-1 text-2xl leading-tight font-extrabold">Konsultasi berhasil diajukan</h1>
                                 <p className="text-tk-deep/75 mx-auto mt-2 max-w-md text-xs leading-relaxed">
-                                    Nomor <span className="font-bold">{nomorPermintaan}</span> atas nama{' '}
-                                    <span className="font-bold">{pasienTerpilih.nama}</span> sudah masuk antrean.
+                                    Nomor <span className="font-bold">{permintaanTerkirim.nomor}</span> atas nama{' '}
+                                    <span className="font-bold">{permintaanTerkirim.pasien.nama}</span> sudah masuk antrean.
                                 </p>
                             </div>
                         </div>
@@ -280,33 +311,33 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
                             <dl className="mt-4 grid gap-3 rounded-2xl bg-[var(--tk-page-alt)] p-4 text-xs sm:grid-cols-2">
                                 <div>
                                     <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Pasien</dt>
-                                    <dd className="mt-1 font-bold">{pasienTerpilih.nama}</dd>
+                                    <dd className="mt-1 font-bold">{permintaanTerkirim.pasien.nama}</dd>
                                     <dd className="text-[11px] text-[var(--tk-muted)]">
-                                        {pasienTerpilih.usia} tahun · {pasienTerpilih.noRm}
+                                        {permintaanTerkirim.pasien.usia ?? '—'} tahun · {permintaanTerkirim.pasien.noRm || 'RM belum tersedia'}
                                     </dd>
                                 </div>
                                 <div>
                                     <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Dokter spesialis</dt>
-                                    <dd className="mt-1 font-bold">{dokterTerpilih.nama}</dd>
-                                    <dd className="text-[11px] text-[var(--tk-muted)]">Spesialis {dokterTerpilih.spesialisasi}</dd>
+                                    <dd className="mt-1 font-bold">{permintaanTerkirim.dokter.nama}</dd>
+                                    <dd className="text-[11px] text-[var(--tk-muted)]">Spesialis {permintaanTerkirim.dokter.spesialisasi}</dd>
                                 </div>
                                 <div>
                                     <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Jadwal dipilih</dt>
                                     <dd className="mt-1 font-bold">
-                                        {dokterTerpilih.hariTerdekat}, {slot} WIT
+                                        {permintaanTerkirim.jadwal.hari}, {permintaanTerkirim.jadwal.slot} WIT
                                     </dd>
-                                    <dd className="text-[11px] text-[var(--tk-muted)]">{dokterTerpilih.faskes}</dd>
+                                    <dd className="text-[11px] text-[var(--tk-muted)]">{permintaanTerkirim.dokter.faskes}</dd>
                                 </div>
                                 <div>
                                     <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Sumber</dt>
                                     <dd className="mt-1 font-bold">Didaftarkan perawat</dd>
                                     <dd className="text-[11px] text-[var(--tk-muted)]">
-                                        {pasienTerpilih.punyaAkun ? 'Pasien memiliki akun' : 'Pasien tanpa akun'}
+                                        {permintaanTerkirim.pasien.punyaAkun ? 'Pasien memiliki akun' : 'Pasien tanpa akun'}
                                     </dd>
                                 </div>
                                 <div className="sm:col-span-2">
                                     <dt className="text-[10px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Keluhan</dt>
-                                    <dd className="mt-1 leading-relaxed">{keluhan.trim()}</dd>
+                                    <dd className="mt-1 leading-relaxed">{permintaanTerkirim.keluhan}</dd>
                                 </div>
                             </dl>
 
@@ -331,7 +362,7 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
 
                             <div className="mt-5 grid gap-2 sm:flex">
                                 <Link
-                                    href={`/perawat/skrining/${pasienTerpilih.id}`}
+                                    href={`/perawat/skrining/${permintaanTerkirim.id}`}
                                     className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-5 text-xs font-bold transition-colors"
                                 >
                                     Lanjut isi skrining
@@ -343,13 +374,12 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
                                 >
                                     Kembali ke antrean
                                 </Link>
-                                <button
-                                    type="button"
-                                    onClick={buatPermintaanLagi}
+                                <Link
+                                    href="/perawat/konsultasi/baru"
                                     className="inline-flex min-h-11 items-center justify-center rounded-full px-4 text-xs font-semibold text-[var(--tk-muted)] transition-colors hover:text-[var(--tk-text)]"
                                 >
                                     Ajukan lagi
-                                </button>
+                                </Link>
                             </div>
                         </div>
                     </section>
@@ -360,7 +390,7 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
 
     return (
         <PerawatAppLayout
-            active="antrean"
+            active={null}
             title="Ajukan konsultasi pasien"
             description="Daftarkan permintaan atas nama pasien, termasuk pasien tanpa akun, lalu lanjutkan ke skrining pada hari yang sama."
         >
@@ -491,7 +521,13 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
                                                             )}
                                                         </div>
                                                         <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">
-                                                            {item.usia} tahun · {item.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'} · {item.noRm}
+                                                            {item.usia ?? '—'} tahun ·{' '}
+                                                            {item.jenisKelamin === 'L'
+                                                                ? 'Laki-laki'
+                                                                : item.jenisKelamin === 'P'
+                                                                  ? 'Perempuan'
+                                                                  : 'Belum diisi'}{' '}
+                                                            · {item.noRm || 'RM belum tersedia'}
                                                         </p>
                                                         <p className="mt-0.5 truncate text-[10px] text-[var(--tk-muted)]">NIK {maskNik(item.nik)}</p>
                                                     </div>
@@ -522,7 +558,7 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
                                 <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                                 <p>
                                     Pasien terpilih: <span className="font-bold text-[var(--tk-text)]">{pasienTerpilih.nama}</span> (
-                                    {pasienTerpilih.telepon}).{' '}
+                                    {pasienTerpilih.telepon || 'nomor belum diisi'}).{' '}
                                     {pasienTerpilih.punyaAkun
                                         ? 'Pasien punya akun, tetapi perawat tetap dapat membuat permintaan atas namanya.'
                                         : 'Pasien tanpa akun tetap dapat dilayani; seluruh hasil akan dicatat pada rekam medis puskesmas.'}
@@ -779,10 +815,11 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
                             <div className="mt-4 grid gap-2 sm:flex sm:items-center">
                                 <button
                                     type="submit"
-                                    className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-xs font-bold transition-colors"
+                                    disabled={mengirim}
+                                    className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     <Send className="size-4" aria-hidden="true" />
-                                    Kirim permintaan konsultasi
+                                    {mengirim ? 'Mengirim permintaan...' : 'Kirim permintaan konsultasi'}
                                 </button>
                                 <Link
                                     href="/perawat/permintaan"
@@ -816,7 +853,9 @@ export default function KonsultasiBaruPerawat({ pasien }: KonsultasiBaruPerawatP
                             <div className="min-w-0">
                                 <p className="truncate text-xs font-bold">{pasienTerpilih ? pasienTerpilih.nama : 'Belum ada pasien dipilih'}</p>
                                 <p className="truncate text-[10px] text-[var(--tk-muted)]">
-                                    {pasienTerpilih ? `${pasienTerpilih.noRm} · ${pasienTerpilih.usia} tahun` : 'Pilih pada langkah 1'}
+                                    {pasienTerpilih
+                                        ? `${pasienTerpilih.noRm || 'RM belum tersedia'} · ${pasienTerpilih.usia ?? '—'} tahun`
+                                        : 'Pilih pada langkah 1'}
                                 </p>
                             </div>
                         </div>

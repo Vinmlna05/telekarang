@@ -93,8 +93,8 @@ function PhoneMockup() {
             className="mx-auto w-full max-w-[330px] rounded-[38px] border border-white/[0.18] bg-[linear-gradient(170deg,#04100E_0%,#0A2A27_45%,#2E8B6A_130%)] px-4 pt-5 pb-3.5 text-white shadow-[0_30px_70px_rgba(0,0,0,0.45)]"
         >
             <div className="flex items-center gap-2.5">
-                <span className="border-tk-accent bg-tk-teal-700 grid size-[38px] place-items-center rounded-full border-2 font-bold">S</span>
-                <span className="flex-1 text-[15px] font-bold">Hai, Perawat Sari</span>
+                <span className="border-tk-accent bg-tk-teal-700 grid size-[38px] place-items-center rounded-full border-2 font-bold"></span>
+                <span className="flex-1 text-[15px] font-bold">Hai</span>
                 <span className="grid size-9 place-items-center rounded-full bg-white/[0.12]">
                     <Bell className="size-[18px]" aria-hidden="true" />
                 </span>

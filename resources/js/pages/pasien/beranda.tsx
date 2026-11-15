@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     Bell,
     CalendarDays,
@@ -7,20 +7,29 @@ import {
     Clock,
     History,
     LayoutGrid,
-    MapPin,
+    MessageSquare,
     Plus,
     ShieldCheck,
     Stethoscope,
+    Video,
     Wifi,
 } from 'lucide-react';
 import { useState } from 'react';
 
-import { spesialisasiFilters, type DokterSpesialis, type StatusJadwal } from '@/data/jadwal-dokter';
+import { modeKonsultasiLabels, type ModeKonsultasi } from '@/data/konsultasi-pasien';
 import { useNotifikasi } from '@/hooks/use-notifikasi';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
 import { cn } from '@/lib/utils';
+import { type SharedData } from '@/types';
 
-type StatusKonsultasi = 'MENUNGGU_SKRINING' | 'SKRINING_SELESAI' | 'MENUNGGU_SPESIALIS' | 'DIKONFIRMASI' | 'BERLANGSUNG' | 'SELESAI';
+type StatusKonsultasi =
+    | 'MENUNGGU_SKRINING'
+    | 'SKRINING_SELESAI'
+    | 'MENUNGGU_SPESIALIS'
+    | 'DIKONFIRMASI'
+    | 'BERLANGSUNG'
+    | 'DIJADWAL_ULANG'
+    | 'SELESAI';
 
 interface KonsultasiAktif {
     id: number;
@@ -28,16 +37,10 @@ interface KonsultasiAktif {
     keluhan: string;
     dokter: string;
     spesialisasi: string;
-    jadwal: string;
-}
-
-interface Dokter {
-    id: number;
-    nama: string;
-    spesialisasi: string;
-    slot: string;
     faskes: string;
-    status: StatusJadwal;
+    mode: ModeKonsultasi;
+    jadwal: string;
+    tanggalSingkat: string;
 }
 
 interface RiwayatItem {
@@ -51,21 +54,47 @@ interface RiwayatItem {
 
 interface BerandaPasienProps {
     konsultasiAktif: KonsultasiAktif | null;
+    daftarKonsultasi: KonsultasiAktif[];
     ringkasan: {
         totalKonsultasi: number;
         rujukanTerhindarkan: number;
     };
-    dokter: DokterSpesialis[];
     riwayat: RiwayatItem[];
 }
 
-const statusMeta: Record<StatusKonsultasi, { label: string; step: number; tone: string }> = {
-    MENUNGGU_SKRINING: { label: 'Menunggu skrining', step: 1, tone: 'text-tk-warning' },
-    SKRINING_SELESAI: { label: 'Skrining selesai', step: 2, tone: 'text-tk-green-500 dark:text-tk-accent' },
-    MENUNGGU_SPESIALIS: { label: 'Menunggu dokter spesialis', step: 2, tone: 'text-tk-info' },
-    DIKONFIRMASI: { label: 'Dikonfirmasi spesialis', step: 3, tone: 'text-tk-info' },
-    BERLANGSUNG: { label: 'Konsultasi berlangsung', step: 3, tone: 'text-tk-green-500 dark:text-tk-accent' },
-    SELESAI: { label: 'Selesai', step: 4, tone: 'text-tk-green-500 dark:text-tk-accent' },
+const statusMeta: Record<StatusKonsultasi, { label: string; step: number; tone: string; badge: string }> = {
+    MENUNGGU_SKRINING: {
+        label: 'Menunggu skrining',
+        step: 1,
+        tone: 'text-tk-warning',
+        badge: 'bg-tk-warning/15 text-tk-warning',
+    },
+    SKRINING_SELESAI: {
+        label: 'Skrining selesai',
+        step: 2,
+        tone: 'text-tk-green-500 dark:text-tk-accent',
+        badge: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
+    },
+    MENUNGGU_SPESIALIS: { label: 'Menunggu dokter spesialis', step: 2, tone: 'text-tk-info', badge: 'bg-tk-info/15 text-tk-info' },
+    DIKONFIRMASI: { label: 'Dikonfirmasi spesialis', step: 3, tone: 'text-tk-info', badge: 'bg-tk-info/15 text-tk-info' },
+    BERLANGSUNG: {
+        label: 'Konsultasi berlangsung',
+        step: 3,
+        tone: 'text-tk-green-500 dark:text-tk-accent',
+        badge: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
+    },
+    DIJADWAL_ULANG: {
+        label: 'Dijadwal ulang',
+        step: 2,
+        tone: 'text-tk-warning',
+        badge: 'bg-tk-warning/15 text-tk-warning',
+    },
+    SELESAI: {
+        label: 'Selesai',
+        step: 4,
+        tone: 'text-tk-green-500 dark:text-tk-accent',
+        badge: 'bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent',
+    },
 };
 
 const langkahKonsultasi = ['Skrining', 'Review dokter', 'Spesialis', 'Hasil'];
@@ -76,18 +105,30 @@ const pesanStatus: Record<StatusKonsultasi, string> = {
     MENUNGGU_SPESIALIS: 'Permintaan sudah diteruskan. Menunggu konfirmasi atau penjadwalan ulang dari dokter spesialis.',
     DIKONFIRMASI: 'Dokter spesialis sudah mengonfirmasi jadwal. Buka detail untuk melihat mode konsultasi Anda.',
     BERLANGSUNG: 'Konsultasi sedang berlangsung. Buka detail untuk melanjutkan percakapan atau panggilan video.',
+    DIJADWAL_ULANG: 'Dokter spesialis menjadwalkan ulang. Pilih slot baru pada detail permintaan agar konsultasi dapat dilanjutkan.',
     SELESAI: 'Konsultasi selesai. Hasil dan saran dokter dapat dilihat pada detail konsultasi.',
 };
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
 const bannerGradient = 'bg-[linear-gradient(135deg,#1F6F57_0%,#4FBF8F_60%,#7CC77F_100%)]';
-const accentChip = 'bg-tk-accent text-tk-deep';
 
 const quickActions = [
     { label: 'Buat Konsultasi', href: '/pasien/konsultasi/baru', icon: Plus },
     { label: 'Jadwal', href: '/pasien/jadwal', icon: CalendarDays },
     { label: 'Riwayat', href: '/pasien/riwayat', icon: History },
 ];
+
+function inisial(nama: string): string {
+    return (
+        nama
+            .replace(/^dr\.?\s+/i, '')
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((bagian) => bagian.charAt(0).toUpperCase())
+            .join('') || 'DR'
+    );
+}
 
 function SectionHeading({ title, href, action }: { title: string; href?: string; action?: string }) {
     return (
@@ -103,23 +144,11 @@ function SectionHeading({ title, href, action }: { title: string; href?: string;
     );
 }
 
-export default function BerandaPasien({ konsultasiAktif, ringkasan, dokter, riwayat }: BerandaPasienProps) {
-    const [filter, setFilter] = useState('Semua');
+export default function BerandaPasien({ konsultasiAktif, daftarKonsultasi, ringkasan, riwayat }: BerandaPasienProps) {
     const [showMore, setShowMore] = useState(false);
+    const { flash } = usePage<SharedData>().props;
     const { belumDibaca } = useNotifikasi('pasien');
 
-    const daftarDokter: Dokter[] = dokter
-        .filter((item) => item.status === 'tersedia')
-        .map((item) => ({
-            id: item.id,
-            nama: item.nama,
-            spesialisasi: item.spesialisasi,
-            slot: `${item.hariTerdekat}, ${item.slotTerdekat}`,
-            faskes: item.faskes,
-            status: item.status,
-        }));
-
-    const dokterTersaring = filter === 'Semua' ? daftarDokter : daftarDokter.filter((item) => item.spesialisasi === filter);
     const status = konsultasiAktif ? statusMeta[konsultasiAktif.status] : null;
 
     return (
@@ -129,6 +158,19 @@ export default function BerandaPasien({ konsultasiAktif, ringkasan, dokter, riwa
             description="Pantau permintaan konsultasi, temukan jadwal dokter spesialis, dan lihat hasil konsultasi Anda."
         >
             <Head title="Beranda pasien" />
+
+            {flash?.success && (
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className="border-tk-green-500/35 bg-tk-green-500/10 mb-4 flex items-start gap-3 rounded-[20px] border p-4"
+                >
+                    <span className="bg-tk-green-500/15 text-tk-green-500 dark:text-tk-accent grid size-9 shrink-0 place-items-center rounded-full">
+                        <CheckCircle2 className="size-4" aria-hidden="true" />
+                    </span>
+                    <p className="text-xs leading-relaxed text-[var(--tk-text)]">{flash.success}</p>
+                </div>
+            )}
 
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.9fr)]">
                 <div className="grid min-w-0 content-start gap-6">
@@ -274,84 +316,107 @@ export default function BerandaPasien({ konsultasiAktif, ringkasan, dokter, riwa
                         </div>
                     </section>
 
-                    <section aria-labelledby="spesialis-tersedia">
-                        <SectionHeading title="Spesialis tersedia" href="/pasien/jadwal" action="Semua jadwal" />
+                    <section aria-labelledby="daftar-konsultasi">
+                        <SectionHeading title="Daftar konsultasi" href="/pasien/konsultasi/baru" action="Buat permintaan" />
 
-                        <div className="flex flex-wrap gap-2">
-                            {spesialisasiFilters.map((item) => {
-                                const isActive = filter === item;
+                        {daftarKonsultasi.length > 0 ? (
+                            <>
+                                <p className="mb-3 text-[11px] text-[var(--tk-muted)]">
+                                    {daftarKonsultasi.length} konsultasi masih berjalan. Daftar tetap tampil sampai penanganan selesai.
+                                </p>
 
-                                return (
-                                    <button
-                                        key={item}
-                                        type="button"
-                                        aria-pressed={isActive}
-                                        onClick={() => setFilter(item)}
-                                        className={cn(
-                                            'min-h-9 shrink-0 rounded-full border px-3.5 text-xs font-semibold transition-colors',
-                                            isActive
-                                                ? cn(accentChip, 'border-transparent')
-                                                : 'border-[var(--tk-glass-border)] bg-[var(--tk-glass)] text-[var(--tk-muted)] hover:text-[var(--tk-text)]',
-                                        )}
-                                    >
-                                        {item}
-                                    </button>
-                                );
-                            })}
-                        </div>
+                                <div className="grid gap-3">
+                                    {daftarKonsultasi.map((item) => {
+                                        const meta = statusMeta[item.status];
+                                        const ModeIcon = item.mode === 'video' ? Video : MessageSquare;
 
-                        {dokterTersaring.length > 0 ? (
-                            <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                                {dokterTersaring.map((item) => (
-                                    <article key={item.id} className={cn('rounded-[22px] p-3', glass)}>
-                                        <div className="relative h-[96px] overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#0F4A40_0%,#2E8B6A_55%,#9FE3B5_100%)]">
-                                            <span className="text-tk-deep/70 absolute inset-0 grid place-items-center text-2xl font-extrabold">
-                                                {item.nama
-                                                    .replace(/^dr\.\s*/i, '')
-                                                    .split(' ')[0]
-                                                    ?.charAt(0)
-                                                    .toUpperCase()}
-                                            </span>
-                                            <span
+                                        return (
+                                            <Link
+                                                key={item.id}
+                                                href={`/pasien/konsultasi/${item.id}`}
                                                 className={cn(
-                                                    'absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                                                    item.status === 'tersedia'
-                                                        ? 'bg-tk-deep/35 text-tk-mint'
-                                                        : item.status === 'terisi'
-                                                          ? 'bg-tk-warning/25 text-tk-deep'
-                                                          : 'bg-tk-deep/35 text-white/70',
+                                                    'group hover:border-tk-accent/45 block rounded-[22px] p-4 transition-colors md:p-5',
+                                                    glass,
                                                 )}
                                             >
-                                                {item.status === 'tersedia' ? 'Tersedia' : item.status === 'terisi' ? 'Terisi' : 'Libur'}
-                                            </span>
-                                        </div>
+                                                <div className="flex items-start gap-3">
+                                                    <span className="text-tk-mint grid size-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#0F4A40_0%,#2E8B6A_55%,#9FE3B5_100%)] text-[11px] font-extrabold">
+                                                        {inisial(item.dokter)}
+                                                    </span>
 
-                                        <p className="mt-3 truncate text-[13px] font-bold">{item.nama}</p>
-                                        <p className="text-tk-green-500 dark:text-tk-accent truncate text-[11px] font-semibold">
-                                            {item.spesialisasi}
-                                        </p>
-                                        <p className="mt-1 flex items-center gap-1 text-[10px] text-[var(--tk-muted)]">
-                                            <MapPin className="size-3 shrink-0" aria-hidden="true" />
-                                            {item.faskes}
-                                        </p>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <p className="text-[13px] font-bold">{item.dokter}</p>
+                                                            <span
+                                                                className={cn(
+                                                                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold',
+                                                                    meta.badge,
+                                                                )}
+                                                            >
+                                                                <Clock className="size-3" aria-hidden="true" />
+                                                                {meta.label}
+                                                            </span>
+                                                        </div>
 
-                                        <div className="mt-3 flex items-center justify-between gap-2">
-                                            <span className="text-[10px] font-semibold text-[var(--tk-muted)]">{item.slot}</span>
-                                            <Link
-                                                href={`/pasien/konsultasi/baru?dokter=${item.id}`}
-                                                aria-label={`Pilih jadwal ${item.nama}`}
-                                                className="bg-tk-accent text-tk-deep hover:bg-tk-mint grid size-8 place-items-center rounded-full transition-colors"
-                                            >
-                                                <ChevronRight className="size-4" aria-hidden="true" />
+                                                        <p className="text-tk-green-500 dark:text-tk-accent mt-0.5 text-[10px] font-semibold">
+                                                            Spesialis {item.spesialisasi}
+                                                        </p>
+
+                                                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[var(--tk-muted)]">
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <Clock className="size-3" aria-hidden="true" />
+                                                                {item.jadwal}
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <ModeIcon className="size-3" aria-hidden="true" />
+                                                                {modeKonsultasiLabels[item.mode]}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <span className="text-tk-muted group-hover:text-tk-accent grid size-8 shrink-0 place-items-center rounded-full bg-[var(--tk-page-alt)] transition-colors">
+                                                        <ChevronRight className="size-4" aria-hidden="true" />
+                                                    </span>
+                                                </div>
+
+                                                <div className="mt-3 rounded-xl bg-[var(--tk-page-alt)] p-3">
+                                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">
+                                                        Keluhan
+                                                    </p>
+                                                    <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--tk-text)]">
+                                                        {item.keluhan}
+                                                    </p>
+                                                </div>
+
+                                                <div className="mt-3 flex items-center justify-between gap-3">
+                                                    <p className="line-clamp-1 text-[10px] text-[var(--tk-muted)]">{item.faskes}</p>
+                                                    <span className="text-tk-green-500 dark:text-tk-accent inline-flex shrink-0 items-center gap-0.5 text-[10px] font-semibold">
+                                                        Lihat detail
+                                                        <ChevronRight className="size-3" aria-hidden="true" />
+                                                    </span>
+                                                </div>
                                             </Link>
-                                        </div>
-                                    </article>
-                                ))}
-                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
                         ) : (
-                            <p className={cn('mt-4 rounded-2xl p-4 text-sm text-[var(--tk-muted)]', glass)}>
-                                Belum ada jadwal untuk spesialisasi ini. Coba pilih filter lain.
-                            </p>
+                            <div className={cn('grid place-items-center rounded-[24px] px-6 py-10 text-center', glass)}>
+                                <span className="bg-tk-green-500/[0.12] text-tk-green-500 dark:bg-tk-accent/[0.12] dark:text-tk-accent grid size-12 place-items-center rounded-full">
+                                    <Stethoscope className="size-6" aria-hidden="true" />
+                                </span>
+                                <p className="mt-3 text-sm font-bold">Belum ada konsultasi aktif</p>
+                                <p className="mt-1 max-w-sm text-[11px] leading-relaxed text-[var(--tk-muted)]">
+                                    Buat permintaan konsultasi. Selama penanganan belum selesai, permintaan akan terus tercatat di sini.
+                                </p>
+                                <Link
+                                    href="/pasien/konsultasi/baru"
+                                    className="bg-tk-accent text-tk-deep hover:bg-tk-mint mt-4 inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-[11px] font-semibold transition-colors"
+                                >
+                                    <Plus className="size-3.5" aria-hidden="true" />
+                                    Buat permintaan
+                                </Link>
+                            </div>
                         )}
                     </section>
 

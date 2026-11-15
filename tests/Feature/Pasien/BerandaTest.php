@@ -101,9 +101,10 @@ test('patients can view the beranda with their own consultation data', function 
             ->where('konsultasiAktif.spesialisasi', 'Anak')
             ->where('ringkasan.totalKonsultasi', 2)
             ->where('ringkasan.rujukanTerhindarkan', 1)
-            ->has('dokter', 1)
-            ->where('dokter.0.nama', 'dr. Ayu Lestari, Sp.A')
-            ->where('dokter.0.status', 'tersedia')
+            ->has('daftarKonsultasi', 1)
+            ->where('daftarKonsultasi.0.id', $aktif->id)
+            ->where('daftarKonsultasi.0.dokter', 'dr. Ayu Lestari, Sp.A')
+            ->where('daftarKonsultasi.0.spesialisasi', 'Anak')
             ->has('riwayat', 2)
             ->where('riwayat.0.id', $selesaiTidakRujuk->id)
             ->where('riwayat.0.diagnosisKode', 'J06.9')
@@ -148,9 +149,77 @@ test('patients only see consultations that belong to them', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('pasien/beranda')
             ->where('konsultasiAktif', null)
+            ->has('daftarKonsultasi', 0)
             ->where('ringkasan.totalKonsultasi', 0)
             ->where('ringkasan.rujukanTerhindarkan', 0)
             ->has('riwayat', 0));
+});
+
+test('the beranda lists every active consultation until it is finished', function () {
+    $pasienUser = User::factory()->create(['role' => 'pasien']);
+    $pasien = Pasien::query()->create([
+        'user_id' => $pasienUser->id,
+        'nama' => $pasienUser->name,
+        'nik' => '9101010101010004',
+    ]);
+
+    $dokterUser = User::factory()->create(['role' => 'spesialis']);
+    $dokter = Dokter::query()->create([
+        'user_id' => $dokterUser->id,
+        'nama' => 'dr. Ayu Lestari, Sp.A',
+        'peran' => 'spesialis',
+        'spesialisasi' => 'Anak',
+        'faskes' => 'RS Rujukan Daratan',
+        'status' => 'aktif',
+    ]);
+
+    $menunggu = Konsultasi::query()->create([
+        'pasien_id' => $pasien->id,
+        'dokter_spesialis_id' => $dokter->id,
+        'mode' => 'teks',
+        'status' => 'MENUNGGU_SKRINING',
+        'keluhan' => 'Demam sejak kemarin.',
+        'tanggal' => now()->subHours(2),
+    ]);
+
+    $berlangsung = Konsultasi::query()->create([
+        'pasien_id' => $pasien->id,
+        'dokter_spesialis_id' => $dokter->id,
+        'mode' => 'video',
+        'status' => 'BERLANGSUNG',
+        'keluhan' => 'Batuk berdahak.',
+        'tanggal' => now()->subHour(),
+    ]);
+
+    Konsultasi::query()->create([
+        'pasien_id' => $pasien->id,
+        'dokter_spesialis_id' => $dokter->id,
+        'mode' => 'teks',
+        'status' => 'KEDALUWARSA',
+        'keluhan' => 'Nyeri perut.',
+        'tanggal' => now()->subDay(),
+    ]);
+
+    Konsultasi::query()->create([
+        'pasien_id' => $pasien->id,
+        'dokter_spesialis_id' => $dokter->id,
+        'mode' => 'teks',
+        'status' => 'SELESAI',
+        'keluhan' => 'Kontrol tekanan darah.',
+        'tanggal' => now()->subDays(2),
+    ]);
+
+    $this->actingAs($pasienUser)
+        ->get('/pasien')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('pasien/beranda')
+            ->where('konsultasiAktif.id', $berlangsung->id)
+            ->has('daftarKonsultasi', 2)
+            ->where('daftarKonsultasi.0.id', $berlangsung->id)
+            ->where('daftarKonsultasi.0.mode', 'video')
+            ->where('daftarKonsultasi.1.id', $menunggu->id)
+            ->where('daftarKonsultasi.1.status', 'MENUNGGU_SKRINING'));
 });
 
 test('patients without a linked patient profile see an empty beranda', function () {
@@ -162,6 +231,7 @@ test('patients without a linked patient profile see an empty beranda', function 
         ->assertInertia(fn (Assert $page) => $page
             ->component('pasien/beranda')
             ->where('konsultasiAktif', null)
+            ->has('daftarKonsultasi', 0)
             ->where('ringkasan.totalKonsultasi', 0)
             ->where('ringkasan.rujukanTerhindarkan', 0)
             ->has('riwayat', 0));

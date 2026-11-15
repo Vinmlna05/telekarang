@@ -23,6 +23,7 @@ class SkriningSeeder extends Seeder
                 'nadi' => 92,
                 'spo2' => 97,
                 'tanda_bahaya' => false,
+                'prioritas' => 'sedang',
                 'catatan' => 'Pasien sadar, tidak sesak, dan masih mau makan serta minum.',
             ],
             'Salim Abdullah' => [
@@ -34,6 +35,7 @@ class SkriningSeeder extends Seeder
                 'nadi' => 88,
                 'spo2' => 98,
                 'tanda_bahaya' => false,
+                'prioritas' => 'sedang',
                 'catatan' => 'Tekanan darah diukur ulang setelah lima menit istirahat. Tidak ada nyeri dada.',
             ],
             'Nur Aini' => [
@@ -45,6 +47,7 @@ class SkriningSeeder extends Seeder
                 'nadi' => 118,
                 'spo2' => 91,
                 'tanda_bahaya' => true,
+                'prioritas' => 'darurat',
                 'catatan' => 'Anak tampak lemas dan sesak. Saturasi oksigen rendah, perlu evaluasi segera.',
             ],
             'Fatimah Zahra' => [
@@ -56,6 +59,7 @@ class SkriningSeeder extends Seeder
                 'nadi' => 84,
                 'spo2' => 98,
                 'tanda_bahaya' => false,
+                'prioritas' => 'sedang',
                 'catatan' => 'Ruam kering di lipatan lengan, tidak ada tanda infeksi berat.',
             ],
             'Yusuf Maulana' => [
@@ -67,6 +71,7 @@ class SkriningSeeder extends Seeder
                 'nadi' => 96,
                 'spo2' => 98,
                 'tanda_bahaya' => false,
+                'prioritas' => 'sedang',
                 'catatan' => 'Pasien masih aktif, turgor kulit baik, dan tidak ada darah pada tinja.',
             ],
             'Halimah Sadiah' => [
@@ -78,6 +83,7 @@ class SkriningSeeder extends Seeder
                 'nadi' => 100,
                 'spo2' => 97,
                 'tanda_bahaya' => false,
+                'prioritas' => 'sedang',
                 'catatan' => 'Demam naik turun, pasien sadar dan tidak ada tanda dehidrasi.',
             ],
             'Rahman Hidayat' => [
@@ -89,6 +95,7 @@ class SkriningSeeder extends Seeder
                 'nadi' => 102,
                 'spo2' => 97,
                 'tanda_bahaya' => false,
+                'prioritas' => 'sedang',
                 'catatan' => 'Luka kaki tampak kotor dengan sedikit nanah, belum ada tanda syok.',
             ],
         ];

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Pasien;
 use App\Http\Controllers\Controller;
 use App\Models\Konsultasi;
 use App\Models\Pasien;
-use App\Support\JadwalDokterPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Inertia\Inertia;
@@ -24,6 +23,7 @@ class BerandaController extends Controller
         'MENUNGGU_SPESIALIS',
         'DIKONFIRMASI',
         'BERLANGSUNG',
+        'DIJADWAL_ULANG',
     ];
 
     /**
@@ -59,6 +59,7 @@ class BerandaController extends Controller
             ->first();
 
         $konsultasiAktif = null;
+        $daftarKonsultasi = [];
         $ringkasan = [
             'totalKonsultasi' => 0,
             'rujukanTerhindarkan' => 0,
@@ -66,12 +67,26 @@ class BerandaController extends Controller
         $riwayat = [];
 
         if ($pasien !== null) {
-            $konsultasiAktif = Konsultasi::query()
+            $daftarKonsultasi = Konsultasi::query()
                 ->with('dokterSpesialis')
                 ->where('pasien_id', $pasien->id)
                 ->whereIn('status', self::STATUS_AKTIF)
                 ->orderByDesc('tanggal')
-                ->first();
+                ->get()
+                ->map(fn (Konsultasi $konsultasi) => [
+                    'id' => $konsultasi->id,
+                    'status' => $konsultasi->status,
+                    'keluhan' => $konsultasi->keluhan,
+                    'dokter' => $konsultasi->dokterSpesialis?->nama ?? 'Dokter spesialis',
+                    'spesialisasi' => $konsultasi->dokterSpesialis?->spesialisasi ?? 'Spesialis',
+                    'faskes' => $konsultasi->dokterSpesialis?->faskes ?? 'Puskesmas Pulau Karang',
+                    'mode' => $konsultasi->mode,
+                    'jadwal' => $this->formatTanggal($konsultasi->tanggal).' · '.$konsultasi->tanggal->format('H.i').' WIT',
+                    'tanggalSingkat' => $this->formatTanggalSingkat($konsultasi->tanggal),
+                ])
+                ->all();
+
+            $konsultasiAktif = $daftarKonsultasi[0] ?? null;
 
             $selesai = Konsultasi::query()
                 ->where('pasien_id', $pasien->id)
@@ -103,16 +118,9 @@ class BerandaController extends Controller
         }
 
         return Inertia::render('pasien/beranda', [
-            'konsultasiAktif' => $konsultasiAktif === null ? null : [
-                'id' => $konsultasiAktif->id,
-                'status' => $konsultasiAktif->status,
-                'keluhan' => $konsultasiAktif->keluhan,
-                'dokter' => $konsultasiAktif->dokterSpesialis?->nama ?? 'Dokter spesialis',
-                'spesialisasi' => $konsultasiAktif->dokterSpesialis?->spesialisasi ?? 'Spesialis',
-                'jadwal' => $this->formatTanggal($konsultasiAktif->tanggal).' · '.$konsultasiAktif->tanggal->format('H.i').' WIT',
-            ],
+            'konsultasiAktif' => $konsultasiAktif,
+            'daftarKonsultasi' => $daftarKonsultasi,
             'ringkasan' => $ringkasan,
-            'dokter' => JadwalDokterPresenter::daftar(),
             'riwayat' => $riwayat,
         ]);
     }
@@ -125,6 +133,16 @@ class BerandaController extends Controller
         return self::HARI[(int) $tanggal->format('w')]
             .', '.$tanggal->format('j')
             .' '.self::BULAN[(int) $tanggal->format('n')]
+            .' '.$tanggal->format('Y');
+    }
+
+    /**
+     * Format tanggal ringkas untuk daftar konsultasi pada beranda.
+     */
+    private function formatTanggalSingkat(Carbon $tanggal): string
+    {
+        return $tanggal->format('d')
+            .' '.substr(self::BULAN[(int) $tanggal->format('n')], 0, 3)
             .' '.$tanggal->format('Y');
     }
 }

@@ -1,10 +1,12 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     CalendarDays,
     CheckCircle2,
     ChevronDown,
     ChevronRight,
     ClipboardList,
+    Eye,
+    EyeOff,
     Info,
     Lock,
     MapPin,
@@ -15,7 +17,6 @@ import {
     UserPlus,
     UserRound,
     Users,
-    X,
     type LucideIcon,
 } from 'lucide-react';
 import { FormEventHandler, useMemo, useState } from 'react';
@@ -34,6 +35,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
+import { type SharedData } from '@/types';
 
 type FilterAkun = 'SEMUA' | 'AKUN' | 'TANPA_AKUN';
 type JenisKelamin = 'L' | 'P';
@@ -41,13 +43,12 @@ type JenisKelamin = 'L' | 'P';
 interface PasienItem {
     id: number;
     nama: string;
-    usia: number;
+    usia: number | null;
     jenisKelamin: string;
-    nik: string;
-    noRm: string;
-    tglLahir: string;
-    alamat: string;
-    telepon: string;
+    nik: string | null;
+    noRm: string | null;
+    alamat: string | null;
+    telepon: string | null;
     punyaAkun: boolean;
     email: string | null;
     kunjunganTerakhir: string;
@@ -81,12 +82,15 @@ interface PasienPerawatProps {
 interface FormPasien {
     nama: string;
     nik: string;
-    tglLahir: string;
-    jenisKelamin: JenisKelamin;
+    tgl_lahir: string;
+    jenis_kelamin: JenisKelamin;
     alamat: string;
     telepon: string;
-    punyaAkun: boolean;
+    punya_akun: boolean;
     email: string;
+    password: string;
+    password_confirmation: string;
+    [key: string]: string | boolean;
 }
 
 const glass = 'border border-[var(--tk-glass-border)] bg-[var(--tk-glass)] backdrop-blur-[16px]';
@@ -100,12 +104,14 @@ const primaryButton =
 const formAwal: FormPasien = {
     nama: '',
     nik: '',
-    tglLahir: '',
-    jenisKelamin: 'P',
+    tgl_lahir: '',
+    jenis_kelamin: 'P',
     alamat: '',
     telepon: '',
-    punyaAkun: false,
+    punya_akun: false,
     email: '',
+    password: '',
+    password_confirmation: '',
 };
 
 const langkahPendaftaran = [
@@ -125,30 +131,16 @@ function inisial(nama: string): string {
     );
 }
 
-function maskNik(nik: string): string {
+function maskNik(nik: string | null): string {
+    if (!nik) {
+        return 'Belum diisi';
+    }
+
     if (nik.length < 8) {
         return nik;
     }
 
     return `${nik.slice(0, 4)}••••••••${nik.slice(-4)}`;
-}
-
-function hitungUsia(tglLahir: string): number {
-    const lahir = new Date(tglLahir);
-
-    if (Number.isNaN(lahir.getTime())) {
-        return 0;
-    }
-
-    const hariIni = new Date();
-    let usia = hariIni.getFullYear() - lahir.getFullYear();
-    const selisihBulan = hariIni.getMonth() - lahir.getMonth();
-
-    if (selisihBulan < 0 || (selisihBulan === 0 && hariIni.getDate() < lahir.getDate())) {
-        usia--;
-    }
-
-    return Math.max(usia, 0);
 }
 
 function validasiForm(form: FormPasien, daftar: PasienItem[]): Record<string, string> {
@@ -164,10 +156,10 @@ function validasiForm(form: FormPasien, daftar: PasienItem[]): Record<string, st
         errors.nik = 'NIK sudah terdaftar.';
     }
 
-    if (form.tglLahir === '') {
-        errors.tglLahir = 'Tanggal lahir wajib diisi.';
-    } else if (new Date(form.tglLahir) > new Date()) {
-        errors.tglLahir = 'Tanggal lahir tidak valid.';
+    if (form.tgl_lahir === '') {
+        errors.tgl_lahir = 'Tanggal lahir wajib diisi.';
+    } else if (new Date(form.tgl_lahir) > new Date()) {
+        errors.tgl_lahir = 'Tanggal lahir tidak valid.';
     }
 
     if (form.alamat.trim().length < 5) {
@@ -178,11 +170,19 @@ function validasiForm(form: FormPasien, daftar: PasienItem[]): Record<string, st
         errors.telepon = 'Nomor telepon tidak valid.';
     }
 
-    if (form.punyaAkun) {
+    if (form.punya_akun) {
         if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) {
             errors.email = 'Email tidak valid.';
         } else if (daftar.some((item) => item.email !== null && item.email.toLowerCase() === form.email.trim().toLowerCase())) {
             errors.email = 'Email sudah dipakai akun lain.';
+        }
+
+        if (form.password.length < 8) {
+            errors.password = 'Kata sandi minimal 8 karakter.';
+        }
+
+        if (form.password !== form.password_confirmation) {
+            errors.password_confirmation = 'Konfirmasi kata sandi tidak sama.';
         }
     }
 
@@ -216,50 +216,43 @@ function SectionHeader({ icon: Icon, title, description }: { icon: LucideIcon; t
 }
 
 export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }: PasienPerawatProps) {
-    const [daftar, setDaftar] = useState<PasienItem[]>(pasien);
+    const { flash } = usePage<SharedData>().props;
+    const { data: form, setData, post, processing, errors, reset, clearErrors } = useForm<FormPasien>(formAwal);
     const [q, setQ] = useState('');
     const [filter, setFilter] = useState<FilterAkun>('SEMUA');
     const [dialogOpen, setDialogOpen] = useState(false);
-    const [form, setForm] = useState<FormPasien>(formAwal);
-    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-    const [berhasil, setBerhasil] = useState<string | null>(null);
-
-    const ringkasanAktif = useMemo(
-        () => ({
-            total: daftar.length,
-            punyaAkun: daftar.filter((item) => item.punyaAkun).length,
-            tanpaAkun: daftar.filter((item) => !item.punyaAkun).length,
-            kunjunganBulanIni: ringkasan.kunjunganBulanIni,
-        }),
-        [daftar, ringkasan.kunjunganBulanIni],
-    );
+    const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+    const [tampilkanSandi, setTampilkanSandi] = useState(false);
 
     const hasil = useMemo(() => {
         const kataKunci = q.trim().toLowerCase();
 
-        return daftar.filter((item) => {
+        return pasien.filter((item) => {
             const cocokFilter = filter === 'SEMUA' || (filter === 'AKUN' ? item.punyaAkun : !item.punyaAkun);
             const cocokKataKunci =
                 kataKunci === '' ||
-                [item.nama, item.nik, item.telepon, item.alamat, item.noRm, item.email ?? ''].some((nilai) =>
+                [item.nama, item.nik ?? '', item.telepon ?? '', item.alamat ?? '', item.noRm ?? '', item.email ?? ''].some((nilai) =>
                     nilai.toLowerCase().includes(kataKunci),
                 );
 
             return cocokFilter && cocokKataKunci;
         });
-    }, [daftar, filter, q]);
+    }, [pasien, filter, q]);
 
     const filterAktif = q.trim() !== '' || filter !== 'SEMUA';
 
     const ubahForm = <K extends keyof FormPasien>(key: K, value: FormPasien[K]) => {
-        setForm((previous) => ({ ...previous, [key]: value }));
-        setFormErrors((previous) => {
+        setData(key, value);
+        clearErrors(key);
+        setClientErrors((previous) => {
             const next = { ...previous };
             delete next[key];
 
             return next;
         });
     };
+
+    const pesanError = (key: keyof FormPasien): string | undefined => clientErrors[key] ?? errors[key];
 
     const resetFilter = () => {
         setQ('');
@@ -269,59 +262,36 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
     const simpanPasien: FormEventHandler = (event) => {
         event.preventDefault();
 
-        const errors = validasiForm(form, daftar);
+        const errorsForm = validasiForm(form, pasien);
 
-        if (Object.keys(errors).length > 0) {
-            setFormErrors(errors);
+        if (Object.keys(errorsForm).length > 0) {
+            setClientErrors(errorsForm);
 
             return;
         }
 
-        const idBaru = Math.max(0, ...daftar.map((item) => item.id)) + 1;
-        const nomorRm = `RM-2026-${String(300 + daftar.length).padStart(4, '0')}`;
-
-        const baru: PasienItem = {
-            id: idBaru,
-            nama: form.nama.trim(),
-            usia: hitungUsia(form.tglLahir),
-            jenisKelamin: form.jenisKelamin,
-            nik: form.nik.trim(),
-            noRm: nomorRm,
-            tglLahir: form.tglLahir,
-            alamat: form.alamat.trim(),
-            telepon: form.telepon.trim(),
-            punyaAkun: form.punyaAkun,
-            email: form.punyaAkun ? form.email.trim() : null,
-            kunjunganTerakhir: 'Belum ada kunjungan',
-            totalKonsultasi: 0,
-            terdaftarPada: 'Hari ini',
-        };
-
-        setDaftar((previous) => [baru, ...previous]);
-        setBerhasil(`${baru.nama} berhasil didaftarkan${baru.punyaAkun ? ' dengan akun pasien' : ' tanpa akun'}.`);
-        setDialogOpen(false);
-        setForm(formAwal);
-        setFormErrors({});
-        setQ('');
-        setFilter('SEMUA');
+        post(route('perawat.pasien.store'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setDialogOpen(false);
+                reset();
+                setClientErrors({});
+                setQ('');
+                setFilter('SEMUA');
+                setTampilkanSandi(false);
+            },
+        });
     };
 
     const verifikasiPasien = (item: PasienMenungguVerifikasi) => {
-        router.patch(
-            route('perawat.pasien.verifikasi', item.id),
-            {},
-            {
-                preserveScroll: true,
-                onSuccess: () => setBerhasil(`${item.nama} berhasil diverifikasi. Nomor rekam medis sudah dapat digunakan.`),
-            },
-        );
+        router.patch(route('perawat.pasien.verifikasi', item.id), {}, { preserveScroll: true });
     };
 
     const kartuRingkasan = [
-        { label: 'Total pasien', value: ringkasanAktif.total, caption: 'terdaftar di puskesmas', icon: Users },
-        { label: 'Punya akun', value: ringkasanAktif.punyaAkun, caption: 'bisa masuk mandiri', icon: UserRound },
-        { label: 'Tanpa akun', value: ringkasanAktif.tanpaAkun, caption: 'dilayani lewat perawat', icon: UserPlus },
-        { label: 'Kunjungan bulan ini', value: ringkasanAktif.kunjunganBulanIni, caption: 'pasien datang ke puskesmas', icon: CalendarDays },
+        { label: 'Total pasien', value: ringkasan.total, caption: 'terdaftar di puskesmas', icon: Users },
+        { label: 'Punya akun', value: ringkasan.punyaAkun, caption: 'bisa masuk mandiri', icon: UserRound },
+        { label: 'Tanpa akun', value: ringkasan.tanpaAkun, caption: 'dilayani lewat perawat', icon: UserPlus },
+        { label: 'Kunjungan bulan ini', value: ringkasan.kunjunganBulanIni, caption: 'pasien datang ke puskesmas', icon: CalendarDays },
     ];
 
     return (
@@ -332,22 +302,14 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
         >
             <Head title="Pasien" />
 
-            {berhasil && (
+            {flash?.success && (
                 <div
                     role="status"
                     aria-live="polite"
                     className="border-tk-green-500/35 bg-tk-green-500/10 mb-5 flex items-start gap-3 rounded-[18px] border px-4 py-3"
                 >
                     <CheckCircle2 className="text-tk-green-500 dark:text-tk-accent mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                    <p className="flex-1 text-[11px] leading-relaxed font-semibold">{berhasil}</p>
-                    <button
-                        type="button"
-                        onClick={() => setBerhasil(null)}
-                        aria-label="Tutup pemberitahuan"
-                        className="grid size-6 shrink-0 place-items-center rounded-full text-[var(--tk-muted)] transition-colors hover:bg-[var(--tk-page-alt)] hover:text-[var(--tk-text)]"
-                    >
-                        <X className="size-3.5" aria-hidden="true" />
-                    </button>
+                    <p className="flex-1 text-[11px] leading-relaxed font-semibold">{flash.success}</p>
                 </div>
             )}
 
@@ -414,7 +376,11 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                     setDialogOpen(next);
 
                     if (!next) {
-                        setFormErrors({});
+                        clearErrors();
+                        setClientErrors({});
+                        setTampilkanSandi(false);
+                        setData('password', '');
+                        setData('password_confirmation', '');
                     }
                 }}
             >
@@ -505,11 +471,11 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                     Daftar pasien
                                 </h2>
                                 <p className="mt-0.5 text-[11px] text-[var(--tk-muted)]">
-                                    {filterAktif ? 'Hasil pencarian dan filter akun.' : 'Semua pasien yang terdaftar di puskesmas.'}
+                                    {filterAktif ? 'Hasil pencarian dan filter akun.' : 'Pasien terverifikasi yang terdaftar di puskesmas.'}
                                 </p>
                             </div>
                             <p role="status" aria-live="polite" className="text-[11px] text-[var(--tk-muted)]">
-                                {hasil.length} dari {daftar.length} pasien
+                                {hasil.length} dari {pasien.length} pasien
                             </p>
                         </div>
 
@@ -572,21 +538,26 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                                     </div>
 
                                                     <p className="mt-1 text-[11px] text-[var(--tk-muted)]">
-                                                        {item.usia} tahun · {item.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'} · NIK{' '}
-                                                        {maskNik(item.nik)}
+                                                        {item.usia !== null ? `${item.usia} tahun` : 'Usia belum diisi'} ·{' '}
+                                                        {item.jenisKelamin === 'L'
+                                                            ? 'Laki-laki'
+                                                            : item.jenisKelamin === 'P'
+                                                              ? 'Perempuan'
+                                                              : 'Jenis kelamin belum diisi'}{' '}
+                                                        · NIK {maskNik(item.nik)}
                                                     </p>
                                                     <p className="mt-0.5 text-[10px] text-[var(--tk-muted)]">
-                                                        {item.noRm} · {item.email ?? 'Didaftarkan oleh perawat'}
+                                                        {item.noRm ?? 'Nomor RM belum diterbitkan'} · {item.email ?? 'Didaftarkan oleh perawat'}
                                                     </p>
 
                                                     <div className="mt-1.5 flex flex-col gap-1 text-[10px] text-[var(--tk-muted)] sm:flex-row sm:flex-wrap sm:gap-3">
                                                         <span className="flex items-center gap-1">
                                                             <Phone className="size-3 shrink-0" aria-hidden="true" />
-                                                            {item.telepon}
+                                                            {item.telepon ?? 'Nomor telepon belum diisi'}
                                                         </span>
                                                         <span className="flex items-center gap-1">
                                                             <MapPin className="size-3 shrink-0" aria-hidden="true" />
-                                                            {item.alamat}
+                                                            {item.alamat ?? 'Alamat belum diisi'}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -743,7 +714,7 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                     placeholder="Contoh: Siti Rahmawati"
                                     className={inputClass}
                                 />
-                                <FieldError message={formErrors.nama} />
+                                <FieldError message={pesanError('nama')} />
                             </div>
 
                             <div className="grid gap-2">
@@ -760,7 +731,7 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                     placeholder="16 digit NIK"
                                     className={inputClass}
                                 />
-                                <FieldError message={formErrors.nik} />
+                                <FieldError message={pesanError('nik')} />
                             </div>
 
                             <div className="grid gap-2">
@@ -772,11 +743,11 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                     type="date"
                                     required
                                     max={new Date().toISOString().slice(0, 10)}
-                                    value={form.tglLahir}
-                                    onChange={(event) => ubahForm('tglLahir', event.target.value)}
+                                    value={form.tgl_lahir}
+                                    onChange={(event) => ubahForm('tgl_lahir', event.target.value)}
                                     className={inputClass}
                                 />
-                                <FieldError message={formErrors.tglLahir} />
+                                <FieldError message={pesanError('tgl_lahir')} />
                             </div>
 
                             <div className="grid gap-2">
@@ -786,8 +757,8 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                 <div className="relative">
                                     <select
                                         id="pasien-jk"
-                                        value={form.jenisKelamin}
-                                        onChange={(event) => ubahForm('jenisKelamin', event.target.value as JenisKelamin)}
+                                        value={form.jenis_kelamin}
+                                        onChange={(event) => ubahForm('jenis_kelamin', event.target.value as JenisKelamin)}
                                         className={cn(inputClass, 'w-full appearance-none pr-10')}
                                     >
                                         <option value="P">Perempuan</option>
@@ -814,7 +785,7 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                     placeholder="+62 812-0000-0000"
                                     className={inputClass}
                                 />
-                                <FieldError message={formErrors.telepon} />
+                                <FieldError message={pesanError('telepon')} />
                             </div>
 
                             <div className="grid gap-2 sm:row-span-2">
@@ -829,7 +800,7 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                     placeholder="Desa/dusun, RT/RW, dan penanda lokasi"
                                     className={textareaClass}
                                 />
-                                <FieldError message={formErrors.alamat} />
+                                <FieldError message={pesanError('alamat')} />
                             </div>
                         </div>
 
@@ -850,14 +821,14 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                         icon: UserRound,
                                     },
                                 ].map(({ value, label, description, icon: Icon }) => {
-                                    const aktif = form.punyaAkun === value;
+                                    const aktif = form.punya_akun === value;
 
                                     return (
                                         <button
                                             key={label}
                                             type="button"
                                             aria-pressed={aktif}
-                                            onClick={() => ubahForm('punyaAkun', value)}
+                                            onClick={() => ubahForm('punya_akun', value)}
                                             className={cn(
                                                 'flex items-start gap-2.5 rounded-2xl border p-3 text-left transition-colors',
                                                 aktif
@@ -883,24 +854,75 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                             </div>
                         </div>
 
-                        {form.punyaAkun && (
-                            <div className="grid gap-2">
-                                <Label htmlFor="pasien-email" className="text-[11px] font-semibold">
-                                    Email akun <span className="text-tk-danger">*</span>
-                                </Label>
-                                <Input
-                                    id="pasien-email"
-                                    type="email"
-                                    required
-                                    autoComplete="email"
-                                    value={form.email}
-                                    onChange={(event) => ubahForm('email', event.target.value)}
-                                    placeholder="nama@telekarang.test"
-                                    className={inputClass}
-                                />
-                                <FieldError message={formErrors.email} />
-                                <p className="text-[9px] leading-relaxed text-[var(--tk-muted)]">
-                                    Kata sandi awal akan dibuat otomatis dan dapat diubah pasien dari halaman akun.
+                        {form.punya_akun && (
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="grid gap-2 sm:col-span-2">
+                                    <Label htmlFor="pasien-email" className="text-[11px] font-semibold">
+                                        Email akun <span className="text-tk-danger">*</span>
+                                    </Label>
+                                    <Input
+                                        id="pasien-email"
+                                        type="email"
+                                        required
+                                        autoComplete="email"
+                                        value={form.email}
+                                        onChange={(event) => ubahForm('email', event.target.value)}
+                                        placeholder="nama@telekarang.test"
+                                        className={inputClass}
+                                    />
+                                    <FieldError message={pesanError('email')} />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="pasien-password" className="text-[11px] font-semibold">
+                                        Kata sandi <span className="text-tk-danger">*</span>
+                                    </Label>
+                                    <div className="relative">
+                                        <Input
+                                            id="pasien-password"
+                                            type={tampilkanSandi ? 'text' : 'password'}
+                                            required
+                                            autoComplete="new-password"
+                                            value={form.password}
+                                            onChange={(event) => ubahForm('password', event.target.value)}
+                                            placeholder="Minimal 8 karakter"
+                                            className={cn(inputClass, 'pr-11')}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setTampilkanSandi((previous) => !previous)}
+                                            aria-label={tampilkanSandi ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                                            className="absolute top-1/2 right-1 grid size-9 -translate-y-1/2 place-items-center rounded-full text-[var(--tk-muted)] transition-colors hover:bg-[var(--tk-page-alt)] hover:text-[var(--tk-text)]"
+                                        >
+                                            {tampilkanSandi ? (
+                                                <EyeOff className="size-4" aria-hidden="true" />
+                                            ) : (
+                                                <Eye className="size-4" aria-hidden="true" />
+                                            )}
+                                        </button>
+                                    </div>
+                                    <FieldError message={pesanError('password')} />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor="pasien-password-confirmation" className="text-[11px] font-semibold">
+                                        Konfirmasi kata sandi <span className="text-tk-danger">*</span>
+                                    </Label>
+                                    <Input
+                                        id="pasien-password-confirmation"
+                                        type={tampilkanSandi ? 'text' : 'password'}
+                                        required
+                                        autoComplete="new-password"
+                                        value={form.password_confirmation}
+                                        onChange={(event) => ubahForm('password_confirmation', event.target.value)}
+                                        placeholder="Ulangi kata sandi"
+                                        className={inputClass}
+                                    />
+                                    <FieldError message={pesanError('password_confirmation')} />
+                                </div>
+
+                                <p className="text-[9px] leading-relaxed text-[var(--tk-muted)] sm:col-span-2">
+                                    Kata sandi minimal 8 karakter. Sampaikan kata sandi kepada pasien setelah akun dibuat.
                                 </p>
                             </div>
                         )}
@@ -914,9 +936,9 @@ export default function PasienPerawat({ pasien, ringkasan, menungguVerifikasi }:
                                     Batal
                                 </button>
                             </DialogClose>
-                            <button type="submit" className={primaryButton}>
+                            <button type="submit" disabled={processing} className={primaryButton}>
                                 <UserPlus className="size-4" aria-hidden="true" />
-                                Simpan & daftarkan
+                                {processing ? 'Menyimpan...' : 'Simpan & daftarkan'}
                             </button>
                         </DialogFooter>
                     </form>

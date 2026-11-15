@@ -60,6 +60,10 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:pasien')
         ->name('pasien.konsultasi.baru');
 
+    Route::post('pasien/konsultasi', [PasienKonsultasiBaruController::class, 'store'])
+        ->middleware('role:pasien')
+        ->name('pasien.konsultasi.store');
+
     Route::get('pasien/konsultasi/{konsultasi}', PasienKonsultasiDetailController::class)
         ->whereNumber('konsultasi')
         ->middleware('role:pasien')
@@ -101,6 +105,10 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:perawat')
         ->name('perawat.konsultasi.baru');
 
+    Route::post('perawat/konsultasi', [PerawatKonsultasiBaruController::class, 'store'])
+        ->middleware('role:perawat')
+        ->name('perawat.konsultasi.store');
+
     Route::get('perawat/konsultasi/{konsultasi}', PerawatKonsultasiController::class)
         ->whereNumber('konsultasi')
         ->middleware('role:perawat')
@@ -116,9 +124,18 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:perawat')
         ->name('perawat.skrining');
 
+    Route::post('perawat/skrining/{konsultasi}', [PerawatSkriningController::class, 'store'])
+        ->whereNumber('konsultasi')
+        ->middleware('role:perawat')
+        ->name('perawat.skrining.store');
+
     Route::get('perawat/pasien', PerawatPasienController::class)
         ->middleware('role:perawat')
         ->name('perawat.pasien');
+
+    Route::post('perawat/pasien', [PerawatPasienController::class, 'store'])
+        ->middleware('role:perawat')
+        ->name('perawat.pasien.store');
 
     Route::patch('perawat/pasien/{pasien}/verifikasi', PerawatVerifikasiPasienController::class)
         ->middleware('role:perawat')

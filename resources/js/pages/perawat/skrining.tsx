@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import {
     Activity,
     AlertTriangle,
@@ -28,6 +28,7 @@ import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
 import { cn } from '@/lib/utils';
 
 type StatusPermintaan = 'MENUNGGU_SKRINING' | 'SKRINING_SELESAI' | 'MENUNGGU_SPESIALIS' | 'KEDALUWARSA';
+type PrioritasSkrining = 'sedang' | 'darurat';
 type VitalKey = 'berat' | 'tinggi' | 'suhu' | 'nadi' | 'sistol' | 'diastol' | 'spo2';
 
 interface Pasien {
@@ -43,7 +44,7 @@ interface Pasien {
     dokter: string;
     jadwal: string;
     status: StatusPermintaan;
-    prioritas: 'normal' | 'merah';
+    prioritas: PrioritasSkrining | null;
     sumber: string;
     waktuMasuk: string;
 }
@@ -57,6 +58,7 @@ interface NilaiAwal {
     diastol: string;
     spo2: string;
     catatan: string;
+    prioritas: PrioritasSkrining;
 }
 
 interface SkriningPerawatProps {
@@ -96,6 +98,32 @@ const vitalConfig: Record<VitalKey, VitalConfig> = {
 };
 
 const vitalKeys = Object.keys(vitalConfig) as VitalKey[];
+
+const prioritasOpsi: Array<{
+    value: PrioritasSkrining;
+    label: string;
+    description: string;
+    icon: LucideIcon;
+    selectedClass: string;
+    iconClass: string;
+}> = [
+    {
+        value: 'sedang',
+        label: 'Sedang',
+        description: 'Kondisi stabil dan dapat menunggu penanganan terjadwal.',
+        icon: Activity,
+        selectedClass: 'border-tk-warning/60 bg-tk-warning/10',
+        iconClass: 'bg-tk-warning/15 text-tk-warning',
+    },
+    {
+        value: 'darurat',
+        label: 'Darurat',
+        description: 'Perlu perhatian dan penanganan segera oleh tim medis.',
+        icon: AlertTriangle,
+        selectedClass: 'border-tk-danger/60 bg-tk-danger/10',
+        iconClass: 'bg-tk-danger/15 text-tk-danger',
+    },
+];
 
 const statusLabel: Record<StatusPermintaan, string> = {
     MENUNGGU_SKRINING: 'Menunggu skrining',
@@ -225,20 +253,23 @@ export default function SkriningPerawat({ konsultasiId, pasien, nilaiAwal }: Skr
     });
     const [keluhan, setKeluhan] = useState(pasien.keluhan);
     const [catatan, setCatatan] = useState(nilaiAwal.catatan);
+    const [prioritas, setPrioritas] = useState<PrioritasSkrining>(nilaiAwal.prioritas);
     const [dicobaKirim, setDicobaKirim] = useState(false);
     const [tersimpan, setTersimpan] = useState(false);
+    const [mengirim, setMengirim] = useState(false);
 
     const errors = useMemo(
         () => Object.fromEntries(vitalKeys.map((key) => [key, errorVital(key, vital[key])])) as Record<VitalKey, string | undefined>,
         [vital],
     );
     const keluhanError = keluhan.trim().length < 10 ? 'Tulis keluhan utama minimal 10 karakter.' : undefined;
-    const lengkap = vitalKeys.every((key) => !errors[key]) && !keluhanError;
+    const vitalTerisi = (key: VitalKey) => vital[key].trim() !== '' && !errors[key];
+    const lengkap = vitalKeys.every(vitalTerisi) && !keluhanError;
     const kriteriaBahaya = useMemo(() => hitungKriteriaBahaya(vital, keluhan), [vital, keluhan]);
     const totalKomponen = vitalKeys.length + 1;
-    const terisi = vitalKeys.filter((key) => !errors[key]).length + (keluhanError ? 0 : 1);
+    const terisi = vitalKeys.filter(vitalTerisi).length + (keluhanError ? 0 : 1);
     const persentase = Math.round((terisi / totalKomponen) * 100);
-    const prioritasMerah = pasien.prioritas === 'merah' || kriteriaBahaya.length > 0;
+    const adaTandaBahaya = kriteriaBahaya.length > 0;
 
     const ubahVital = (key: VitalKey, value: string) => {
         setVital((previous) => ({ ...previous, [key]: value }));
@@ -253,8 +284,28 @@ export default function SkriningPerawat({ konsultasiId, pasien, nilaiAwal }: Skr
             return;
         }
 
-        setTersimpan(true);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        const nilai = (key: VitalKey) => Number(vital[key].replace(',', '.'));
+
+        setMengirim(true);
+        router.post(
+            route('perawat.skrining.store', konsultasiId),
+            {
+                berat: nilai('berat'),
+                tinggi: nilai('tinggi'),
+                suhu: nilai('suhu'),
+                nadi: nilai('nadi'),
+                sistol: nilai('sistol'),
+                diastol: nilai('diastol'),
+                spo2: nilai('spo2'),
+                prioritas,
+                keluhan,
+                catatan,
+            },
+            {
+                preserveScroll: true,
+                onFinish: () => setMengirim(false),
+            },
+        );
     };
 
     return (
@@ -299,10 +350,23 @@ export default function SkriningPerawat({ konsultasiId, pasien, nilaiAwal }: Skr
                                     <ClipboardList className="size-3" aria-hidden="true" />
                                     {statusLabel[pasien.status]}
                                 </span>
-                                {prioritasMerah && (
-                                    <span className="text-tk-deep inline-flex items-center gap-1.5 rounded-full bg-white/85 px-2.5 py-1 text-[9px] font-bold">
-                                        <AlertTriangle className="text-tk-danger size-3" aria-hidden="true" />
-                                        Prioritas merah
+                                <span
+                                    className={cn(
+                                        'inline-flex items-center gap-1.5 rounded-full bg-white/85 px-2.5 py-1 text-[9px] font-bold',
+                                        prioritas === 'darurat' ? 'text-tk-danger' : 'text-tk-warning',
+                                    )}
+                                >
+                                    {prioritas === 'darurat' ? (
+                                        <AlertTriangle className="size-3" aria-hidden="true" />
+                                    ) : (
+                                        <Activity className="size-3" aria-hidden="true" />
+                                    )}
+                                    Prioritas {prioritas}
+                                </span>
+                                {adaTandaBahaya && prioritas !== 'darurat' && (
+                                    <span className="text-tk-danger inline-flex items-center gap-1.5 rounded-full bg-white/85 px-2.5 py-1 text-[9px] font-bold">
+                                        <AlertTriangle className="size-3" aria-hidden="true" />
+                                        Tanda bahaya terdeteksi
                                     </span>
                                 )}
                                 <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[9px] font-semibold text-white">
@@ -455,6 +519,72 @@ export default function SkriningPerawat({ konsultasiId, pasien, nilaiAwal }: Skr
                         </div>
                     </section>
 
+                    <section aria-labelledby="judul-prioritas" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
+                        <div id="judul-prioritas">
+                            <SectionHeader
+                                icon={AlertTriangle}
+                                title="Prioritas penanganan"
+                                description="Pilih prioritas berdasarkan kondisi pasien. Pilihan ini menentukan warna kartu di beranda dan antrean setelah skrining disimpan."
+                            />
+                        </div>
+
+                        <fieldset className="mt-5">
+                            <legend className="sr-only">Prioritas penanganan</legend>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                {prioritasOpsi.map((opsi) => {
+                                    const Icon = opsi.icon;
+                                    const dipilih = prioritas === opsi.value;
+
+                                    return (
+                                        <label
+                                            key={opsi.value}
+                                            className={cn(
+                                                'relative flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 transition-colors',
+                                                dipilih ? opsi.selectedClass : 'border-[var(--tk-glass-border)] hover:bg-[var(--tk-page-alt)]',
+                                            )}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="prioritas"
+                                                value={opsi.value}
+                                                checked={dipilih}
+                                                onChange={() => {
+                                                    setPrioritas(opsi.value);
+                                                    setTersimpan(false);
+                                                }}
+                                                className="sr-only"
+                                            />
+                                            <span className={cn('grid size-9 shrink-0 place-items-center rounded-full', opsi.iconClass)}>
+                                                <Icon className="size-4" aria-hidden="true" />
+                                            </span>
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block text-[12px] font-bold">{opsi.label}</span>
+                                                <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                                    {opsi.description}
+                                                </span>
+                                            </span>
+                                            <span
+                                                className={cn(
+                                                    'grid size-5 shrink-0 place-items-center rounded-full border',
+                                                    dipilih
+                                                        ? 'bg-tk-green-500 dark:bg-tk-accent dark:text-tk-deep border-transparent text-white'
+                                                        : 'border-[var(--tk-glass-border)]',
+                                                )}
+                                            >
+                                                {dipilih && <CheckCircle2 className="size-3.5" aria-hidden="true" />}
+                                            </span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </fieldset>
+
+                        <p className="mt-3 rounded-2xl bg-[var(--tk-page-alt)] p-3 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                            Triase otomatis tetap berjalan dan dapat menampilkan peringatan tanda bahaya, tetapi warna kartu di beranda dan antrean
+                            mengikuti pilihan prioritas perawat.
+                        </p>
+                    </section>
+
                     <section aria-labelledby="judul-keluhan" className={cn('rounded-[24px] p-5 md:p-6', glass)}>
                         <div id="judul-keluhan">
                             <SectionHeader
@@ -537,9 +667,9 @@ export default function SkriningPerawat({ konsultasiId, pasien, nilaiAwal }: Skr
                         </div>
 
                         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-                            <button type="submit" disabled={!lengkap} className={primaryButton}>
+                            <button type="submit" disabled={!lengkap || mengirim} className={primaryButton}>
                                 {lengkap ? <ClipboardCheck className="size-4" aria-hidden="true" /> : <Lock className="size-4" aria-hidden="true" />}
-                                Simpan skrining
+                                {mengirim ? 'Menyimpan skrining...' : 'Simpan skrining'}
                             </button>
 
                             <Link

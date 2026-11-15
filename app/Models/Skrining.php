@@ -13,6 +13,17 @@ class Skrining extends Model
     protected $table = 'skrining';
 
     /**
+     * Nilai prioritas penanganan yang dipilih perawat.
+     *
+     * @var list<string>
+     */
+    public const PRIORITAS = ['sedang', 'darurat'];
+
+    public const PRIORITAS_SEDANG = 'sedang';
+
+    public const PRIORITAS_DARURAT = 'darurat';
+
+    /**
      * @var list<string>
      */
     protected $fillable = [
@@ -26,6 +37,7 @@ class Skrining extends Model
         'nadi',
         'spo2',
         'tanda_bahaya',
+        'prioritas',
         'catatan',
         'waktu',
     ];
