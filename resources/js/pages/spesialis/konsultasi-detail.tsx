@@ -14,12 +14,13 @@ import {
     UserRound,
     Video,
 } from 'lucide-react';
-import { useRef, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 
 import ConnectionBadge from '@/components/connection-badge';
 import InputError from '@/components/input-error';
 import { alasanKoneksi, useConnection } from '@/hooks/use-connection';
 import SpesialisAppLayout from '@/layouts/spesialis/spesialis-app-layout';
+import { kompresBerkas } from '@/lib/chat';
 import { cn } from '@/lib/utils';
 import { type SharedData } from '@/types';
 
@@ -61,6 +62,7 @@ interface KonsultasiSpesialisProps {
         dokterUmum: string | null;
         prioritas: 'darurat' | 'sedang' | null;
         dikonfirmasiPada: string | null;
+        tautanVideo: string | null;
     };
     pasien: {
         nama: string;
@@ -96,6 +98,10 @@ const prioritasMeta: Record<Prioritas, { label: string; tone: string }> = {
     },
 };
 
+function sumberFoto(foto: string): string {
+    return foto.startsWith('data:') || foto.startsWith('http') ? foto : `/storage/${foto}`;
+}
+
 const statusLabel: Record<string, string> = {
     MENUNGGU_SPESIALIS: 'Menunggu konfirmasi',
     DIKONFIRMASI: 'Dikonfirmasi',
@@ -107,8 +113,10 @@ export default function KonsultasiSpesialis({ konsultasi, pasien, skrining, hasi
     const koneksi = useConnection();
     const { flash } = usePage<SharedData>().props;
     const fileRef = useRef<HTMLInputElement>(null);
+    const [memprosesFoto, setMemprosesFoto] = useState(false);
 
     const form = useForm<{ isi: string; lampiran_foto: File | null }>({ isi: '', lampiran_foto: null });
+    const videoForm = useForm<{ tautan_video: string }>({ tautan_video: konsultasi.tautanVideo ?? '' });
 
     const prioritas = prioritasMeta[skrining?.prioritas ?? (konsultasi.prioritas === 'darurat' ? 'merah' : 'normal')];
     const bisaChat = ['DIKONFIRMASI', 'BERLANGSUNG', 'SELESAI'].includes(konsultasi.status);
@@ -133,6 +141,39 @@ export default function KonsultasiSpesialis({ konsultasi, pasien, skrining, hasi
                 }
             },
         });
+    }
+
+    function simpanTautan(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        videoForm.post(route('spesialis.konsultasi.tautan', konsultasi.id), {
+            preserveScroll: true,
+        });
+    }
+
+    async function pilihFoto(event: FormEvent<HTMLInputElement>) {
+        const berkas = event.currentTarget.files?.[0];
+
+        if (!berkas) {
+            return;
+        }
+
+        if (!berkas.type.startsWith('image/')) {
+            form.setError('lampiran_foto', 'Lampiran harus berupa gambar.');
+
+            return;
+        }
+
+        setMemprosesFoto(true);
+
+        try {
+            form.setData('lampiran_foto', await kompresBerkas(berkas));
+            form.clearErrors('lampiran_foto');
+        } catch {
+            form.setError('lampiran_foto', 'Foto gagal diproses. Coba gambar lain.');
+        } finally {
+            setMemprosesFoto(false);
+        }
     }
 
     return (
@@ -174,6 +215,13 @@ export default function KonsultasiSpesialis({ konsultasi, pasien, skrining, hasi
                 <div className="border-tk-green-500/35 bg-tk-green-500/10 mb-4 flex items-start gap-3 rounded-[20px] border p-4">
                     <CheckCircle2 className="text-tk-green-500 dark:text-tk-accent mt-0.5 size-4 shrink-0" aria-hidden="true" />
                     <p className="text-xs leading-relaxed">{flash.success}</p>
+                </div>
+            )}
+
+            {flash?.error && (
+                <div className="bg-tk-danger/10 border-tk-danger/35 mb-4 flex items-start gap-3 rounded-[20px] border p-4">
+                    <AlertTriangle className="text-tk-danger mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                    <p className="text-xs leading-relaxed">{flash.error}</p>
                 </div>
             )}
 
@@ -315,6 +363,55 @@ export default function KonsultasiSpesialis({ konsultasi, pasien, skrining, hasi
                                 )}
                             </div>
 
+                            <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                        <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">
+                                            Sesi video · Google Meet
+                                        </p>
+                                        <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                            Isi tautan Google Meet agar pasien dapat bergabung. Tautan akan tampil pada halaman konsultasi pasien.
+                                        </p>
+                                    </div>
+                                    {konsultasi.tautanVideo && (
+                                        <a
+                                            href={konsultasi.tautanVideo}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[10px] font-bold"
+                                        >
+                                            <Video className="size-3.5" aria-hidden="true" />
+                                            Gabung video
+                                        </a>
+                                    )}
+                                </div>
+                                <form onSubmit={simpanTautan} className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
+                                    <div className="min-w-0 flex-1">
+                                        <label htmlFor="tautan-video-spesialis" className="sr-only">
+                                            Tautan video Google Meet
+                                        </label>
+                                        <input
+                                            id="tautan-video-spesialis"
+                                            type="url"
+                                            inputMode="url"
+                                            value={videoForm.data.tautan_video}
+                                            onChange={(event) => videoForm.setData('tautan_video', event.target.value)}
+                                            placeholder="https://meet.google.com/abc-defg-hij"
+                                            className="h-10 w-full rounded-xl border border-[var(--tk-glass-border)] bg-[var(--tk-page)] px-3 font-mono text-[10px] text-[var(--tk-text)] placeholder:text-[var(--tk-muted)]"
+                                        />
+                                        <InputError message={videoForm.errors.tautan_video} className="text-tk-danger mt-1.5 text-[10px]" />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        disabled={videoForm.processing}
+                                        className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-[11px] font-bold disabled:opacity-50"
+                                    >
+                                        <Video className="size-3.5" aria-hidden="true" />
+                                        {videoForm.processing ? 'Menyimpan...' : 'Simpan tautan'}
+                                    </button>
+                                </form>
+                            </div>
+
                             <div className="mt-4 grid max-h-[420px] gap-3 overflow-y-auto pr-1">
                                 {pesan.length === 0 && (
                                     <p className="rounded-2xl bg-[var(--tk-page-alt)] p-4 text-center text-[11px] text-[var(--tk-muted)]">
@@ -332,13 +429,22 @@ export default function KonsultasiSpesialis({ konsultasi, pasien, skrining, hasi
                                                     milikSendiri ? 'bg-tk-green-500/[0.14] dark:bg-tk-accent/[0.16]' : 'bg-[var(--tk-page-alt)]',
                                                 )}
                                             >
-                                                <p className="text-[10px] font-bold text-[var(--tk-muted)]">{item.pengirim}</p>
+                                                <p className="text-[10px] font-bold text-[var(--tk-muted)]">
+                                                    {milikSendiri
+                                                        ? 'Anda (dokter spesialis)'
+                                                        : item.peran === 'perawat'
+                                                          ? 'Perawat puskesmas'
+                                                          : item.pengirim}
+                                                </p>
                                                 {item.isi && <p className="mt-0.5 text-[11px] leading-relaxed whitespace-pre-line">{item.isi}</p>}
                                                 {item.lampiranFoto && (
-                                                    <p className="text-tk-info mt-1 inline-flex items-center gap-1 text-[10px]">
-                                                        <ImagePlus className="size-3" aria-hidden="true" />
-                                                        Lampiran foto
-                                                    </p>
+                                                    <a href={sumberFoto(item.lampiranFoto)} target="_blank" rel="noopener noreferrer">
+                                                        <img
+                                                            src={sumberFoto(item.lampiranFoto)}
+                                                            alt={`Lampiran foto dari ${item.pengirim}`}
+                                                            className="mt-2 max-h-56 w-full rounded-xl object-cover"
+                                                        />
+                                                    </a>
                                                 )}
                                                 <p className="mt-1 text-[9px] text-[var(--tk-muted)]">{item.waktu}</p>
                                             </div>
@@ -362,25 +468,27 @@ export default function KonsultasiSpesialis({ konsultasi, pasien, skrining, hasi
                                     <InputError message={form.errors.isi} className="text-tk-danger mt-1.5 text-[10px]" />
                                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                                         <label className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border border-[var(--tk-glass-border)] px-3 text-[10px] font-semibold text-[var(--tk-muted)]">
-                                            <ImagePlus className="size-3.5" aria-hidden="true" />
-                                            Foto
+                                            <ImagePlus className={cn('size-3.5', memprosesFoto && 'animate-pulse')} aria-hidden="true" />
+                                            {memprosesFoto ? 'Memproses…' : form.data.lampiran_foto ? 'Foto siap' : 'Foto'}
                                             <input
                                                 ref={fileRef}
                                                 type="file"
                                                 accept="image/*"
                                                 className="sr-only"
-                                                onChange={(event) => form.setData('lampiran_foto', event.target.files?.[0] ?? null)}
+                                                disabled={memprosesFoto}
+                                                onChange={pilihFoto}
                                             />
                                         </label>
                                         <button
                                             type="submit"
-                                            disabled={form.processing}
+                                            disabled={form.processing || memprosesFoto}
                                             className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-[11px] font-bold disabled:opacity-50"
                                         >
                                             <Send className="size-3.5" aria-hidden="true" />
                                             Kirim
                                         </button>
                                     </div>
+                                    <InputError message={form.errors.lampiran_foto} className="text-tk-danger mt-1.5 text-[10px]" />
                                 </form>
                             )}
                         </section>

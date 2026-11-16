@@ -65,6 +65,11 @@ Route::middleware(['auth'])->group(function () {
         ->middleware('role:pasien')
         ->name('pasien.konsultasi.detail');
 
+    Route::post('pasien/konsultasi/{konsultasi}/pesan', [PasienKonsultasiDetailController::class, 'storePesan'])
+        ->whereNumber('konsultasi')
+        ->middleware('role:pasien')
+        ->name('pasien.konsultasi.pesan');
+
     Route::get('pasien/riwayat', PasienRiwayatController::class)
         ->middleware('role:pasien')
         ->name('pasien.riwayat');
@@ -214,6 +219,11 @@ Route::middleware(['auth'])->group(function () {
         ->whereNumber('konsultasi')
         ->middleware('role:spesialis')
         ->name('spesialis.konsultasi.pesan');
+
+    Route::post('spesialis/konsultasi/{konsultasi}/tautan', [SpesialisKonsultasiController::class, 'storeTautan'])
+        ->whereNumber('konsultasi')
+        ->middleware('role:spesialis')
+        ->name('spesialis.konsultasi.tautan');
 
     Route::get('spesialis/hasil/{konsultasi}', SpesialisHasilController::class)
         ->whereNumber('konsultasi')

@@ -19,6 +19,7 @@ npm install
 copy .env.example .env        # bila belum ada .env
 php artisan key:generate
 php artisan migrate:fresh --seed
+php artisan storage:link      # agar foto lampiran chat dapat dibuka
 composer dev                  # serve + queue + vite
 ```
 

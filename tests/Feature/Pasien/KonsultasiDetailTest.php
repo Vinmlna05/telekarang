@@ -8,6 +8,7 @@ use App\Models\Pasien;
 use App\Models\Pesan;
 use App\Models\Skrining;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -164,3 +165,73 @@ test('users with other roles cannot view a consultation detail page', function (
         ->get('/pasien/konsultasi/1')
         ->assertForbidden();
 })->with(['perawat', 'dokter_umum', 'spesialis', 'admin']);
+
+test('patients can open the google meet link shared by the specialist', function () {
+    [$user, , , $konsultasi] = buatKonsultasiPasienDetail();
+
+    $konsultasi->update([
+        'mode' => 'video',
+        'tautan_video' => 'https://meet.google.com/abc-defg-hij',
+    ]);
+
+    $this->actingAs($user)
+        ->get('/pasien/konsultasi/'.$konsultasi->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('pasien/konsultasi-detail')
+            ->where('konsultasi.tautanVideo', 'https://meet.google.com/abc-defg-hij'));
+});
+
+test('patients can send a text message to the specialist', function () {
+    [$user, , , $konsultasi] = buatKonsultasiPasienDetail();
+
+    $this->actingAs($user)
+        ->post("/pasien/konsultasi/{$konsultasi->id}/pesan", [
+            'isi' => 'Saya ingin menanyakan dosis obat, dok.',
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $pesan = Pesan::query()->firstOrFail();
+
+    expect($pesan->pengirim_id)->toBe($user->id)
+        ->and($pesan->isi)->toBe('Saya ingin menanyakan dosis obat, dok.');
+});
+
+test('patients can send a photo to the specialist', function () {
+    [$user, , , $konsultasi] = buatKonsultasiPasienDetail();
+
+    $this->actingAs($user)
+        ->post("/pasien/konsultasi/{$konsultasi->id}/pesan", [
+            'isi' => 'Ini foto kondisinya, dok.',
+            'lampiran_foto' => UploadedFile::fake()->image('kondisi.jpg'),
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $pesan = Pesan::query()->firstOrFail();
+
+    expect($pesan->lampiran_foto)->not->toBeNull();
+});
+
+test('patients cannot send messages for another patient consultation', function () {
+    [, , , $konsultasi] = buatKonsultasiPasienDetail();
+    $lain = User::factory()->create(['role' => 'pasien']);
+
+    $this->actingAs($lain)
+        ->post("/pasien/konsultasi/{$konsultasi->id}/pesan", ['isi' => 'Halo'])
+        ->assertNotFound();
+
+    expect(Pesan::query()->count())->toBe(0);
+});
+
+test('patients cannot send messages before the specialist room is open', function () {
+    [$user, , , $konsultasi] = buatKonsultasiPasienDetail();
+    $konsultasi->update(['status' => 'MENUNGGU_SKRINING']);
+
+    $this->actingAs($user)
+        ->post("/pasien/konsultasi/{$konsultasi->id}/pesan", ['isi' => 'Halo'])
+        ->assertSessionHas('error');
+
+    expect(Pesan::query()->count())->toBe(0);
+});

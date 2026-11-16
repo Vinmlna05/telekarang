@@ -54,6 +54,38 @@ export function simpanPesanLokal(kunci: string, daftar: PesanChatLokal[]): boole
     }
 }
 
+export function dataUrlKeBerkas(dataUrl: string, nama = 'lampiran.jpg'): File | null {
+    const cocok = /^data:([^;,]+);base64,(.*)$/.exec(dataUrl);
+
+    if (!cocok) {
+        return null;
+    }
+
+    try {
+        const biner = window.atob(cocok[2]);
+        const byte = new Uint8Array(biner.length);
+
+        for (let i = 0; i < biner.length; i += 1) {
+            byte[i] = biner.charCodeAt(i);
+        }
+
+        return new File([byte], nama, { type: cocok[1] });
+    } catch {
+        return null;
+    }
+}
+
+export async function kompresBerkas(file: File): Promise<File> {
+    const dataUrl = await kompresGambar(file);
+    const hasil = dataUrlKeBerkas(dataUrl, `foto-${Date.now()}.jpg`);
+
+    if (!hasil) {
+        throw new Error('Foto gagal diproses.');
+    }
+
+    return hasil;
+}
+
 export function kompresGambar(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
         const pembaca = new FileReader();

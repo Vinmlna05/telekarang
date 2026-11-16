@@ -39,6 +39,7 @@ class KonsultasiController extends Controller
                 'status' => $data->status,
                 'keluhan' => $data->keluhan,
                 'mode' => $data->mode,
+                'tautanVideo' => $data->tautan_video,
                 'jadwal' => $data->jadwal === null ? null : $data->jadwal->hari.' · '.substr($data->jadwal->jam_mulai, 0, 5).' WIT',
                 'dokterUmum' => $data->dokterPengirim?->nama,
                 'prioritas' => $data->prioritasKartu(),
@@ -76,7 +77,7 @@ class KonsultasiController extends Controller
             ],
             'pesan' => $data->pesan->map(fn (Pesan $pesan) => [
                 'id' => $pesan->id,
-                'pengirim' => $pesan->pengirim?->name ?? 'Pengguna',
+                'pengirim' => $this->namaPengirim($pesan, $data),
                 'peran' => $pesan->pengirim?->role ?? 'sistem',
                 'isi' => $pesan->isi,
                 'lampiranFoto' => $pesan->lampiran_foto,
@@ -127,6 +128,52 @@ class KonsultasiController extends Controller
         ]);
 
         return back();
+    }
+
+    /**
+     * Simpan tautan video Google Meet untuk dibuka pasien.
+     */
+    public function storeTautan(Request $request, int $konsultasi): RedirectResponse
+    {
+        $dokter = $this->dokterSaya($request);
+
+        $data = Konsultasi::query()
+            ->whereKey($konsultasi)
+            ->where('dokter_spesialis_id', $dokter->id)
+            ->firstOrFail();
+
+        if (! in_array($data->status, ['DIKONFIRMASI', 'BERLANGSUNG', 'SELESAI'], true)) {
+            return back()->with('error', 'Ruang konsultasi belum dibuka.');
+        }
+
+        $validated = $request->validate([
+            'tautan_video' => [
+                'required',
+                'string',
+                'max:2048',
+                'url',
+                'regex:/^https:\/\/meet\.google\.com\/[A-Za-z0-9\-_\/?=&.%]+$/',
+            ],
+        ], [
+            'tautan_video.regex' => 'Tautan harus berupa tautan Google Meet yang valid (https://meet.google.com/...).',
+            'tautan_video.url' => 'Tautan harus berupa tautan Google Meet yang valid (https://meet.google.com/...).',
+        ]);
+
+        $data->update(['tautan_video' => $validated['tautan_video']]);
+
+        return back()->with('success', 'Tautan video Google Meet tersimpan dan dapat dibuka pasien.');
+    }
+
+    /**
+     * Nama pengirim pesan; pesan pasien memakai nama pada data pasien.
+     */
+    private function namaPengirim(Pesan $pesan, Konsultasi $konsultasi): string
+    {
+        if ($pesan->pengirim?->role === 'pasien') {
+            return $konsultasi->pasien?->nama ?? 'Pasien';
+        }
+
+        return $pesan->pengirim?->name ?? 'Pengguna';
     }
 
     private function dokterSaya(Request $request): Dokter

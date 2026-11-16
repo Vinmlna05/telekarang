@@ -1,4 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     ArrowLeft,
@@ -40,8 +40,9 @@ import {
 } from '@/data/konsultasi-pasien';
 import { alasanKoneksi, useConnection } from '@/hooks/use-connection';
 import PasienAppLayout from '@/layouts/pasien/pasien-app-layout';
-import { bacaPesanLokal, kompresGambar, simpanPesanLokal } from '@/lib/chat';
+import { bacaPesanLokal, dataUrlKeBerkas, kompresGambar, simpanPesanLokal } from '@/lib/chat';
 import { cn } from '@/lib/utils';
+import { type SharedData } from '@/types';
 
 interface SkriningDetail {
     perawat: string;
@@ -80,6 +81,7 @@ interface KonsultasiDetailData {
     mode: ModeKonsultasi;
     status: StatusKonsultasi;
     keluhan: string;
+    tautanVideo: string | null;
     skrining: SkriningDetail | null;
     hasil: HasilDetail | null;
     pesan: PesanKonsultasi[];
@@ -136,11 +138,60 @@ function angkaDesimal(nilai: number): string {
     return nilai.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
+interface HasilKirimPesan {
+    berhasil: boolean;
+    pesan?: string;
+}
+
+async function kirimPesanKeServer(konsultasiId: number, pesan: PesanKonsultasi, token: string): Promise<HasilKirimPesan> {
+    const dataForm = new FormData();
+    dataForm.append('isi', pesan.isi);
+    dataForm.append('_token', token);
+
+    if (pesan.foto) {
+        const berkas = dataUrlKeBerkas(pesan.foto, `foto-${pesan.id}.jpg`);
+
+        if (berkas) {
+            dataForm.append('lampiran_foto', berkas);
+        }
+    }
+
+    try {
+        const respons = await fetch(`/pasien/konsultasi/${konsultasiId}/pesan`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': token,
+                'X-Requested-With': 'XMLHttpRequest',
+                Accept: 'application/json',
+            },
+            body: dataForm,
+            credentials: 'same-origin',
+        });
+
+        if (!respons.ok) {
+            const galat = (await respons.json().catch(() => null)) as { message?: string } | null;
+
+            return {
+                berhasil: false,
+                pesan: galat?.message ?? 'Pesan gagal dikirim. Coba lagi saat sinyal membaik.',
+            };
+        }
+
+        return { berhasil: true };
+    } catch {
+        return {
+            berhasil: false,
+            pesan: 'Pesan gagal dikirim. Pesan disimpan dan akan dikirim ulang otomatis.',
+        };
+    }
+}
+
 export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) {
     const data = konsultasi;
     const hasil = data.hasil;
     const skrining = data.skrining;
     const koneksi = useConnection();
+    const { csrf_token } = usePage<SharedData>().props;
     const kunciPesan = `telekarang:konsultasi-pasien:${data.id}`;
     const resepTersimpan = bacaHasilSpesialis(data.id)?.resep ?? null;
 
@@ -150,17 +201,20 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
     const [modeManual, setModeManual] = useState<ModeKonsultasi | null>(null);
     const [fotoLampiran, setFotoLampiran] = useState<string | null>(null);
     const [memprosesFoto, setMemprosesFoto] = useState(false);
+    const [mengirim, setMengirim] = useState(false);
     const [errorPesan, setErrorPesan] = useState<string>();
     const [info, setInfo] = useState<string | null>(null);
     const [penyimpananPenuh, setPenyimpananPenuh] = useState(false);
     const [tersalin, setTersalin] = useState(false);
 
     const ujungChat = useRef<HTMLDivElement>(null);
+    const sedangKirimAntrean = useRef(false);
     const semuaPesan = [...data.pesan, ...pesanLokal.filter((lokal) => !data.pesan.some((pesan) => pesan.id === lokal.id))];
     const progres = progresKonsultasi[data.status];
     const modeLabel = modeKonsultasiLabels[mode];
     const statusLabel = statusKonsultasiLabels[data.status];
-    const tautanVideo = `https://meet.jit.si/TeleKarang-${data.nomor}`;
+    const tautanVideo = data.tautanVideo;
+    const bisaChat = ['MENUNGGU_SPESIALIS', 'DIKONFIRMASI', 'BERLANGSUNG', 'SELESAI'].includes(data.status);
 
     const alasanMode =
         mode === 'teks'
@@ -172,7 +226,9 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
             : null;
 
     useEffect(() => {
-        setPesanLokal(bacaPesanLokal<PesanKonsultasi>(kunciPesan));
+        const tersimpan = bacaPesanLokal<PesanKonsultasi>(kunciPesan);
+
+        setPesanLokal(tersimpan.map((pesan) => ({ ...pesan, statusKirim: 'MENUNGGU' as const })));
         setPesanBaru('');
         setFotoLampiran(null);
         setErrorPesan(undefined);
@@ -191,20 +247,47 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
     }, [koneksi.status, data.mode, modeManual]);
 
     useEffect(() => {
-        if (koneksi.status === 'offline') {
+        if (koneksi.status === 'offline' || sedangKirimAntrean.current) {
             return;
         }
 
-        setPesanLokal((previous) => {
-            if (!previous.some((pesan) => pesan.statusKirim === 'MENUNGGU')) {
-                return previous;
+        const antrean = pesanLokal.filter((pesan) => pesan.statusKirim === 'MENUNGGU');
+
+        if (antrean.length === 0) {
+            return;
+        }
+
+        sedangKirimAntrean.current = true;
+
+        void (async () => {
+            let semuaTerkirim = true;
+
+            for (const pesan of antrean) {
+                const hasil = await kirimPesanKeServer(data.id, pesan, csrf_token);
+
+                if (!hasil.berhasil) {
+                    setErrorPesan(hasil.pesan);
+                    semuaTerkirim = false;
+                    break;
+                }
+
+                setPesanLokal((previous) => {
+                    const sisa = previous.filter((item) => item.id !== pesan.id);
+
+                    simpanPesanLokal(kunciPesan, sisa);
+
+                    return sisa;
+                });
             }
 
-            setInfo('Sinyal kembali. Pesan yang tertunda sudah dikirim.');
+            sedangKirimAntrean.current = false;
 
-            return previous.map((pesan) => (pesan.statusKirim === 'MENUNGGU' ? { ...pesan, statusKirim: 'TERKIRIM' } : pesan));
-        });
-    }, [koneksi.status]);
+            if (semuaTerkirim) {
+                setInfo('Sinyal kembali. Pesan yang tertunda sudah dikirim.');
+                router.reload({ only: ['konsultasi'] });
+            }
+        })();
+    }, [koneksi.status, pesanLokal, data.id, kunciPesan, csrf_token]);
 
     useEffect(() => {
         if (pesanLokal.length === 0) {
@@ -225,6 +308,12 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
     }
 
     async function salinTautan() {
+        if (!tautanVideo) {
+            setInfo('Dokter spesialis belum mengirim tautan video.');
+
+            return;
+        }
+
         try {
             await navigator.clipboard.writeText(tautanVideo);
             setTersalin(true);
@@ -260,7 +349,17 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
         }
     }
 
-    function kirimPesan(event: FormEvent<HTMLFormElement>) {
+    function hapusPesanLokal(id: number) {
+        setPesanLokal((previous) => {
+            const sisa = previous.filter((pesan) => pesan.id !== id);
+
+            simpanPesanLokal(kunciPesan, sisa);
+
+            return sisa;
+        });
+    }
+
+    async function kirimPesan(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         const isi = pesanBaru.trim();
@@ -270,20 +369,43 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
             return;
         }
 
-        setPesanLokal((previous) => [
-            ...previous,
-            {
-                id: Date.now(),
-                pengirim: 'pasien',
-                isi: isi.length > 0 ? isi : 'Mengirim foto kondisi saya.',
-                waktu: 'Baru saja',
-                foto: fotoLampiran,
-                statusKirim: koneksi.status === 'offline' ? 'MENUNGGU' : 'TERKIRIM',
-            },
-        ]);
+        if (!bisaChat) {
+            setErrorPesan('Ruang konsultasi terbuka setelah dokter spesialis ditentukan.');
+            return;
+        }
+
+        const pesanBaruLokal: PesanKonsultasi = {
+            id: Date.now(),
+            pengirim: 'pasien',
+            isi: isi.length > 0 ? isi : 'Mengirim foto kondisi saya.',
+            waktu: 'Baru saja',
+            foto: fotoLampiran,
+            statusKirim: 'MENUNGGU',
+        };
+
+        setPesanLokal((previous) => [...previous, pesanBaruLokal]);
         setPesanBaru('');
         setFotoLampiran(null);
         setErrorPesan(undefined);
+
+        if (koneksi.status === 'offline') {
+            setInfo('Anda sedang offline. Pesan disimpan di perangkat dan dikirim otomatis saat sinyal kembali.');
+
+            return;
+        }
+
+        setMengirim(true);
+        const hasil = await kirimPesanKeServer(data.id, pesanBaruLokal, csrf_token);
+        setMengirim(false);
+
+        if (!hasil.berhasil) {
+            setErrorPesan(hasil.pesan);
+
+            return;
+        }
+
+        hapusPesanLokal(pesanBaruLokal.id);
+        router.reload({ only: ['konsultasi'] });
     }
 
     const tandaVital = skrining
@@ -619,40 +741,52 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
                         )}
 
                         {mode === 'video' ? (
-                            <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-4">
-                                <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">Sesi video (simulasi)</p>
-                                <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
-                                    Gunakan tautan berikut untuk bergabung ke ruang video. Pada produksi, gunakan penyedia video terenkripsi dan
-                                    autentikasi peserta.
-                                </p>
-                                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                                    <Input
-                                        readOnly
-                                        value={tautanVideo}
-                                        aria-label="Tautan video konsultasi"
-                                        className="h-10 w-full rounded-xl border-[var(--tk-glass-border)] bg-[var(--tk-page)] font-mono text-[10px]"
-                                    />
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={salinTautan}
-                                            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-[var(--tk-glass)] px-3 text-[10px] font-semibold transition-colors hover:bg-[var(--tk-page-alt)]"
-                                        >
-                                            <Copy className="size-3.5" aria-hidden="true" />
-                                            {tersalin ? 'Tersalin' : 'Salin'}
-                                        </button>
-                                        <a
-                                            href={tautanVideo}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-bold transition-colors"
-                                        >
-                                            <ExternalLink className="size-3.5" aria-hidden="true" />
-                                            Gabung video
-                                        </a>
+                            tautanVideo ? (
+                                <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-4">
+                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">
+                                        Sesi video · Google Meet
+                                    </p>
+                                    <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                        Tautan dikirim oleh dokter spesialis. Tekan Gabung video untuk memulai konsultasi.
+                                    </p>
+                                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                        <Input
+                                            readOnly
+                                            value={tautanVideo}
+                                            aria-label="Tautan video konsultasi"
+                                            className="h-10 w-full rounded-xl border-[var(--tk-glass-border)] bg-[var(--tk-page)] font-mono text-[10px]"
+                                        />
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={salinTautan}
+                                                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-[var(--tk-glass)] px-3 text-[10px] font-semibold transition-colors hover:bg-[var(--tk-page-alt)]"
+                                            >
+                                                <Copy className="size-3.5" aria-hidden="true" />
+                                                {tersalin ? 'Tersalin' : 'Salin'}
+                                            </button>
+                                            <a
+                                                href={tautanVideo}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-bold transition-colors"
+                                            >
+                                                <ExternalLink className="size-3.5" aria-hidden="true" />
+                                                Gabung video
+                                            </a>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-4">
+                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">
+                                        Sesi video · Google Meet
+                                    </p>
+                                    <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                        Dokter spesialis belum mengirim tautan video. Anda tetap dapat berkomunikasi lewat chat di bawah.
+                                    </p>
+                                </div>
+                            )
                         ) : (
                             alasanMode && (
                                 <div className="bg-tk-warning/10 mt-4 flex items-start gap-2.5 rounded-2xl p-3.5">
@@ -714,70 +848,78 @@ export default function KonsultasiDetail({ konsultasi }: KonsultasiDetailProps) 
                             )}
                         </div>
 
-                        <form onSubmit={kirimPesan} className="mt-4 border-t border-[var(--tk-glass-border)] pt-4">
-                            {fotoLampiran && (
-                                <div className="mb-2 flex items-center gap-2 rounded-xl bg-[var(--tk-page-alt)] p-2">
-                                    <img src={fotoLampiran} alt="Pratinjau foto terkompres" className="size-14 rounded-lg object-cover" />
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-[10px] font-semibold">Foto siap dikirim</p>
-                                        <p className="text-[9px] text-[var(--tk-muted)]">Dikompres otomatis · maksimal ±200 KB</p>
+                        {bisaChat ? (
+                            <>
+                                <form onSubmit={kirimPesan} className="mt-4 border-t border-[var(--tk-glass-border)] pt-4">
+                                    {fotoLampiran && (
+                                        <div className="mb-2 flex items-center gap-2 rounded-xl bg-[var(--tk-page-alt)] p-2">
+                                            <img src={fotoLampiran} alt="Pratinjau foto terkompres" className="size-14 rounded-lg object-cover" />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[10px] font-semibold">Foto siap dikirim</p>
+                                                <p className="text-[9px] text-[var(--tk-muted)]">Dikompres otomatis · maksimal ±200 KB</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFotoLampiran(null)}
+                                                aria-label="Hapus foto lampiran"
+                                                className="text-tk-muted grid size-8 shrink-0 place-items-center rounded-full hover:bg-[var(--tk-glass)] hover:text-[var(--tk-text)]"
+                                            >
+                                                <X className="size-4" aria-hidden="true" />
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            id={`lampiran-pasien-${data.id}`}
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={pilihFoto}
+                                            className="sr-only"
+                                            disabled={memprosesFoto}
+                                        />
+                                        <label
+                                            htmlFor={`lampiran-pasien-${data.id}`}
+                                            aria-label="Lampirkan foto"
+                                            className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-full border border-[var(--tk-glass-border)] text-[var(--tk-muted)] transition-colors hover:bg-[var(--tk-page-alt)] hover:text-[var(--tk-text)]"
+                                        >
+                                            <ImagePlus className={cn('size-4', memprosesFoto && 'animate-pulse')} aria-hidden="true" />
+                                        </label>
+                                        <Input
+                                            value={pesanBaru}
+                                            onChange={(event) => {
+                                                setPesanBaru(event.target.value);
+                                                setErrorPesan(undefined);
+                                            }}
+                                            placeholder="Tulis pesan tindak lanjut..."
+                                            aria-label="Tulis pesan tindak lanjut"
+                                            aria-invalid={Boolean(errorPesan)}
+                                            className="focus-visible:ring-tk-accent h-11 rounded-full border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] text-xs text-[var(--tk-text)] placeholder:text-[var(--tk-muted)]"
+                                        />
+                                        <button
+                                            type="submit"
+                                            disabled={mengirim || memprosesFoto || (!pesanBaru.trim() && !fotoLampiran)}
+                                            aria-label="Kirim pesan"
+                                            className="bg-tk-accent text-tk-deep hover:bg-tk-mint grid size-11 shrink-0 place-items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-45"
+                                        >
+                                            <Send className={cn('size-4', mengirim && 'animate-pulse')} aria-hidden="true" />
+                                        </button>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setFotoLampiran(null)}
-                                        aria-label="Hapus foto lampiran"
-                                        className="text-tk-muted grid size-8 shrink-0 place-items-center rounded-full hover:bg-[var(--tk-glass)] hover:text-[var(--tk-text)]"
-                                    >
-                                        <X className="size-4" aria-hidden="true" />
-                                    </button>
-                                </div>
-                            )}
+                                    <InputError message={errorPesan} className="text-tk-danger mt-2 text-[10px]" />
+                                </form>
 
-                            <div className="flex items-center gap-2">
-                                <input
-                                    id={`lampiran-pasien-${data.id}`}
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={pilihFoto}
-                                    className="sr-only"
-                                    disabled={memprosesFoto}
-                                />
-                                <label
-                                    htmlFor={`lampiran-pasien-${data.id}`}
-                                    aria-label="Lampirkan foto"
-                                    className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-full border border-[var(--tk-glass-border)] text-[var(--tk-muted)] transition-colors hover:bg-[var(--tk-page-alt)] hover:text-[var(--tk-text)]"
-                                >
-                                    <ImagePlus className={cn('size-4', memprosesFoto && 'animate-pulse')} aria-hidden="true" />
-                                </label>
-                                <Input
-                                    value={pesanBaru}
-                                    onChange={(event) => {
-                                        setPesanBaru(event.target.value);
-                                        setErrorPesan(undefined);
-                                    }}
-                                    placeholder="Tulis pesan tindak lanjut..."
-                                    aria-label="Tulis pesan tindak lanjut"
-                                    aria-invalid={Boolean(errorPesan)}
-                                    className="focus-visible:ring-tk-accent h-11 rounded-full border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] text-xs text-[var(--tk-text)] placeholder:text-[var(--tk-muted)]"
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={memprosesFoto || (!pesanBaru.trim() && !fotoLampiran)}
-                                    aria-label="Kirim pesan"
-                                    className="bg-tk-accent text-tk-deep hover:bg-tk-mint grid size-11 shrink-0 place-items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-45"
-                                >
-                                    <Send className="size-4" aria-hidden="true" />
-                                </button>
-                            </div>
-                            <InputError message={errorPesan} className="text-tk-danger mt-2 text-[10px]" />
-                        </form>
-
-                        <p className="mt-2 flex items-start gap-1.5 text-[9px] leading-relaxed text-[var(--tk-muted)]">
-                            <Info className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-                            {koneksi.status === 'offline'
-                                ? 'Anda sedang offline. Pesan disimpan di perangkat dan dikirim otomatis saat sinyal kembali.'
-                                : 'Ruang chat tetap terbuka untuk tindak lanjut. Foto otomatis dikompres sebelum dikirim.'}
-                        </p>
+                                <p className="mt-2 flex items-start gap-1.5 text-[9px] leading-relaxed text-[var(--tk-muted)]">
+                                    <Info className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                                    {koneksi.status === 'offline'
+                                        ? 'Anda sedang offline. Pesan disimpan di perangkat dan dikirim otomatis saat sinyal kembali.'
+                                        : 'Ruang chat tetap terbuka untuk tindak lanjut. Foto otomatis dikompres sebelum dikirim.'}
+                                </p>
+                            </>
+                        ) : (
+                            <p className="mt-4 rounded-2xl bg-[var(--tk-page-alt)] p-4 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                Ruang chat terbuka setelah dokter spesialis ditentukan. Lengkapi skrining di puskesmas terlebih dahulu.
+                            </p>
+                        )}
                     </section>
                 </div>
 

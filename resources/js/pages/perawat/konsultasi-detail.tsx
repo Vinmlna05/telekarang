@@ -8,6 +8,8 @@ import {
     ChevronRight,
     ClipboardCheck,
     Clock,
+    Copy,
+    ExternalLink,
     FileText,
     HeartPulse,
     ImagePlus,
@@ -29,8 +31,10 @@ import { useRef, useState, type FormEvent } from 'react';
 
 import ConnectionBadge from '@/components/connection-badge';
 import InputError from '@/components/input-error';
+import { Input } from '@/components/ui/input';
 import { alasanKoneksi, useConnection } from '@/hooks/use-connection';
 import PerawatAppLayout from '@/layouts/perawat/perawat-app-layout';
+import { kompresBerkas } from '@/lib/chat';
 import { cn } from '@/lib/utils';
 
 type Prioritas = 'merah' | 'kuning' | 'normal';
@@ -93,6 +97,7 @@ interface KonsultasiDetailProps {
         status: string;
         keluhan: string;
         mode: 'video' | 'teks';
+        tautanVideo: string | null;
         tanggal: string | null;
         tanggalSkrining: string | null;
         dokter: string | null;
@@ -128,6 +133,10 @@ const textareaClass =
 
 const STATUS_PILIH = ['MENUNGGU_PEMILIHAN_SPESIALIS', 'DIJADWAL_ULANG'];
 const STATUS_RUANG = ['DIKONFIRMASI', 'BERLANGSUNG', 'SELESAI'];
+
+function sumberFoto(foto: string): string {
+    return foto.startsWith('data:') || foto.startsWith('http') ? foto : `/storage/${foto}`;
+}
 
 const statusMeta: Record<string, { label: string; tone: string }> = {
     MENUNGGU_SKRINING: { label: 'Menunggu skrining', tone: 'bg-tk-warning/15 text-tk-warning' },
@@ -176,6 +185,9 @@ export default function KonsultasiDetailPerawat({ konsultasi, pasien, skrining, 
     const prioritas = prioritasMeta[skrining?.prioritas ?? (konsultasi.prioritas === 'darurat' ? 'merah' : 'normal')];
     const [dokterId, setDokterId] = useState<number | null>(null);
     const [jadwalId, setJadwalId] = useState<number | null>(null);
+    const [memprosesFoto, setMemprosesFoto] = useState(false);
+    const [tersalin, setTersalin] = useState(false);
+    const [infoTautan, setInfoTautan] = useState<string | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const slotForm = useForm({ dokter_id: 0, jadwal_id: 0 });
@@ -195,6 +207,46 @@ export default function KonsultasiDetailPerawat({ konsultasi, pasien, skrining, 
 
         slotForm.transform(() => ({ dokter_id: dokterId, jadwal_id: jadwalId }));
         slotForm.post(route('perawat.konsultasi.spesialis', konsultasi.id), { preserveScroll: true });
+    }
+
+    async function pilihFoto(event: FormEvent<HTMLInputElement>) {
+        const berkas = event.currentTarget.files?.[0];
+
+        if (!berkas) {
+            return;
+        }
+
+        if (!berkas.type.startsWith('image/')) {
+            pesanForm.setError('lampiran_foto', 'Lampiran harus berupa gambar.');
+
+            return;
+        }
+
+        setMemprosesFoto(true);
+
+        try {
+            pesanForm.setData('lampiran_foto', await kompresBerkas(berkas));
+            pesanForm.clearErrors('lampiran_foto');
+        } catch {
+            pesanForm.setError('lampiran_foto', 'Foto gagal diproses. Coba gambar lain.');
+        } finally {
+            setMemprosesFoto(false);
+        }
+    }
+
+    async function salinTautan() {
+        if (!konsultasi.tautanVideo) {
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(konsultasi.tautanVideo);
+            setInfoTautan(null);
+            setTersalin(true);
+            window.setTimeout(() => setTersalin(false), 2000);
+        } catch {
+            setInfoTautan('Tautan tidak dapat disalin otomatis. Salin manual dari kolom tautan.');
+        }
     }
 
     function kirimPesan(event: FormEvent<HTMLFormElement>) {
@@ -450,24 +502,23 @@ export default function KonsultasiDetailPerawat({ konsultasi, pasien, skrining, 
                                                     {dokter.jadwal.length === 0 && (
                                                         <p className="text-[10px] text-[var(--tk-muted)]">Dokter belum mengatur jadwal.</p>
                                                     )}
-                                                    {dokter.jadwal.map((slot) => (
+                                                    {dokter.jadwal.length > 0 && tersedia.length === 0 && (
+                                                        <p className="text-[10px] text-[var(--tk-muted)]">Tidak ada slot tersedia saat ini.</p>
+                                                    )}
+                                                    {tersedia.map((slot) => (
                                                         <button
                                                             key={slot.id}
                                                             type="button"
-                                                            disabled={slot.status !== 'tersedia'}
                                                             onClick={() => setJadwalId(slot.id)}
                                                             className={cn(
                                                                 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[10px] font-semibold transition-colors',
                                                                 jadwalId === slot.id
                                                                     ? 'bg-tk-accent text-tk-deep border-transparent'
-                                                                    : slot.status === 'tersedia'
-                                                                      ? 'border-[var(--tk-glass-border)] hover:bg-[var(--tk-page-alt)]'
-                                                                      : 'border-transparent bg-[var(--tk-page-alt)] text-[var(--tk-muted)] line-through',
+                                                                    : 'border-[var(--tk-glass-border)] hover:bg-[var(--tk-page-alt)]',
                                                             )}
                                                         >
                                                             <CalendarDays className="size-3" aria-hidden="true" />
                                                             {slot.hari} {slot.jamMulai}
-                                                            {slot.status !== 'tersedia' && ` (${slot.status})`}
                                                         </button>
                                                     ))}
                                                 </div>
@@ -583,6 +634,59 @@ export default function KonsultasiDetailPerawat({ konsultasi, pasien, skrining, 
                                 {koneksi.status !== 'stabil' && <ConnectionBadge status={koneksi.status} />}
                             </div>
 
+                            {(konsultasi.tautanVideo !== null || konsultasi.mode === 'video') && (
+                                <div className="mt-4 rounded-2xl border border-[var(--tk-glass-border)] bg-[var(--tk-page-alt)] p-4">
+                                    <p className="text-[9px] font-semibold tracking-[0.1em] text-[var(--tk-muted)] uppercase">
+                                        Sesi video · Google Meet
+                                    </p>
+                                    {konsultasi.tautanVideo ? (
+                                        <>
+                                            <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                                Tautan dikirim oleh dokter spesialis. Gunakan tautan ini agar perawat dan pasien dapat bergabung ke
+                                                sesi video.
+                                            </p>
+                                            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                                <Input
+                                                    readOnly
+                                                    value={konsultasi.tautanVideo}
+                                                    aria-label="Tautan video konsultasi"
+                                                    className="h-10 w-full rounded-xl border-[var(--tk-glass-border)] bg-[var(--tk-page)] font-mono text-[10px]"
+                                                />
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={salinTautan}
+                                                        className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-[var(--tk-glass)] px-3 text-[10px] font-semibold transition-colors hover:bg-[var(--tk-page-alt)]"
+                                                    >
+                                                        <Copy className="size-3.5" aria-hidden="true" />
+                                                        {tersalin ? 'Tersalin' : 'Salin'}
+                                                    </button>
+                                                    <a
+                                                        href={konsultasi.tautanVideo}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-bold transition-colors"
+                                                    >
+                                                        <ExternalLink className="size-3.5" aria-hidden="true" />
+                                                        Gabung video
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <p className="mt-1 text-[10px] leading-relaxed text-[var(--tk-muted)]">
+                                            Dokter spesialis belum mengirim tautan video. Perawat tetap dapat berkomunikasi lewat chat di bawah.
+                                        </p>
+                                    )}
+                                    {infoTautan && (
+                                        <p className="bg-tk-info/10 text-tk-info mt-2 flex items-start gap-1.5 rounded-xl px-3 py-2 text-[10px] leading-relaxed">
+                                            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                                            {infoTautan}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="mt-4 grid max-h-[420px] gap-3 overflow-y-auto pr-1">
                                 {pesan.length === 0 && (
                                     <p className="rounded-2xl bg-[var(--tk-page-alt)] p-4 text-center text-[11px] text-[var(--tk-muted)]">
@@ -600,13 +704,18 @@ export default function KonsultasiDetailPerawat({ konsultasi, pasien, skrining, 
                                                     milikSendiri ? 'bg-tk-green-500/[0.14] dark:bg-tk-accent/[0.16]' : 'bg-[var(--tk-page-alt)]',
                                                 )}
                                             >
-                                                <p className="text-[10px] font-bold text-[var(--tk-muted)]">{item.pengirim}</p>
+                                                <p className="text-[10px] font-bold text-[var(--tk-muted)]">
+                                                    {milikSendiri ? 'Anda (perawat)' : item.pengirim}
+                                                </p>
                                                 {item.isi && <p className="mt-0.5 text-[11px] leading-relaxed whitespace-pre-line">{item.isi}</p>}
                                                 {item.lampiranFoto && (
-                                                    <p className="text-tk-info mt-1 inline-flex items-center gap-1 text-[10px]">
-                                                        <ImagePlus className="size-3" aria-hidden="true" />
-                                                        Lampiran foto
-                                                    </p>
+                                                    <a href={sumberFoto(item.lampiranFoto)} target="_blank" rel="noopener noreferrer">
+                                                        <img
+                                                            src={sumberFoto(item.lampiranFoto)}
+                                                            alt={`Lampiran foto dari ${item.pengirim}`}
+                                                            className="mt-2 max-h-56 w-full rounded-xl object-cover"
+                                                        />
+                                                    </a>
                                                 )}
                                                 <p className="mt-1 text-[9px] text-[var(--tk-muted)]">
                                                     {item.waktu}
@@ -633,25 +742,27 @@ export default function KonsultasiDetailPerawat({ konsultasi, pasien, skrining, 
                                     <InputError message={pesanForm.errors.isi} className="text-tk-danger mt-1.5 text-[10px]" />
                                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                                         <label className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border border-[var(--tk-glass-border)] px-3 text-[10px] font-semibold text-[var(--tk-muted)]">
-                                            <ImagePlus className="size-3.5" aria-hidden="true" />
-                                            Foto
+                                            <ImagePlus className={cn('size-3.5', memprosesFoto && 'animate-pulse')} aria-hidden="true" />
+                                            {memprosesFoto ? 'Memproses…' : pesanForm.data.lampiran_foto ? 'Foto siap' : 'Foto'}
                                             <input
                                                 ref={fileRef}
                                                 type="file"
                                                 accept="image/*"
                                                 className="sr-only"
-                                                onChange={(event) => pesanForm.setData('lampiran_foto', event.target.files?.[0] ?? null)}
+                                                disabled={memprosesFoto}
+                                                onChange={pilihFoto}
                                             />
                                         </label>
                                         <button
                                             type="submit"
-                                            disabled={pesanForm.processing}
+                                            disabled={pesanForm.processing || memprosesFoto}
                                             className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-[11px] font-bold disabled:opacity-50"
                                         >
                                             <Send className="size-3.5" aria-hidden="true" />
                                             Kirim
                                         </button>
                                     </div>
+                                    <InputError message={pesanForm.errors.lampiran_foto} className="text-tk-danger mt-1.5 text-[10px]" />
                                 </form>
                             )}
                         </section>

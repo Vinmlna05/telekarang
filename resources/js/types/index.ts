@@ -25,6 +25,7 @@ export interface SharedData {
     name: string;
     quote: { message: string; author: string };
     auth: Auth;
+    csrf_token: string;
     flash?: {
         success?: string | null;
         error?: string | null;

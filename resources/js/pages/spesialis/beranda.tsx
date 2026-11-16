@@ -210,15 +210,9 @@ export default function BerandaSpesialis({ ringkasan, permintaan, jadwal, berlan
                                             <div className="flex shrink-0 items-center justify-between gap-3 xl:justify-end">
                                                 <Link
                                                     href={`/spesialis/konsultasi/${item.id}`}
-                                                    className="min-h-9 text-[11px] font-semibold text-[var(--tk-muted)] underline-offset-4 hover:underline"
-                                                >
-                                                    Lihat detail
-                                                </Link>
-                                                <Link
-                                                    href={`/spesialis/konsultasi/${item.id}`}
                                                     className="bg-tk-accent text-tk-deep hover:bg-tk-mint inline-flex min-h-9 items-center gap-1 rounded-full px-4 text-xs font-semibold transition-colors"
                                                 >
-                                                    Konfirmasi jadwal
+                                                    Lihat detail
                                                     <ChevronRight className="size-3.5" aria-hidden="true" />
                                                 </Link>
                                             </div>

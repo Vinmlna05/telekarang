@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Konsultasi;
 use App\Models\Pesan;
 use App\Support\TanggalIndonesia;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -36,6 +38,7 @@ class KonsultasiDetailController extends Controller
                 'faskes' => $data->dokterSpesialis?->faskes ?? 'Puskesmas Pulau Karang',
                 'jadwal' => $this->jadwal($data),
                 'mode' => $data->mode,
+                'tautanVideo' => $data->tautan_video,
                 'status' => $data->status,
                 'keputusanDokter' => $data->keputusan_dokter,
                 'catatanDokter' => $data->catatan_dokter,
@@ -76,6 +79,46 @@ class KonsultasiDetailController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * Kirim pesan pasien pada ruang konsultasi.
+     */
+    public function storePesan(Request $request, string $konsultasi): RedirectResponse
+    {
+        $data = Konsultasi::query()
+            ->whereKey((int) $konsultasi)
+            ->whereHas('pasien', fn ($query) => $query->where('user_id', $request->user()->id))
+            ->firstOrFail();
+
+        if (! in_array($data->status, ['MENUNGGU_SPESIALIS', 'DIKONFIRMASI', 'BERLANGSUNG', 'SELESAI'], true)) {
+            return back()->with('error', 'Ruang konsultasi belum terbuka. Lengkapi skrining dan tunggu dokter spesialis.');
+        }
+
+        $validated = $request->validate([
+            'isi' => ['nullable', 'string', 'max:2000'],
+            'lampiran_foto' => ['nullable', 'image', 'max:2048'],
+        ], [
+            'lampiran_foto.image' => 'Lampiran harus berupa foto.',
+            'lampiran_foto.max' => 'Ukuran foto terlalu besar (maksimal 2 MB).',
+        ]);
+
+        if (blank($validated['isi'] ?? null) && ! $request->hasFile('lampiran_foto')) {
+            return back()->with('error', 'Tulis pesan atau lampirkan foto sebelum mengirim.');
+        }
+
+        $lampiran = $request->file('lampiran_foto')?->store('chat', 'public');
+
+        Pesan::query()->create([
+            'konsultasi_id' => $data->id,
+            'pengirim_id' => $request->user()->id,
+            'isi' => $validated['isi'] ?? null,
+            'lampiran_foto' => $lampiran,
+            'status_kirim' => 'terkirim',
+            'waktu' => Carbon::now(),
+        ]);
+
+        return back()->with('success', 'Pesan terkirim ke dokter spesialis.');
     }
 
     private function jadwal(Konsultasi $konsultasi): string

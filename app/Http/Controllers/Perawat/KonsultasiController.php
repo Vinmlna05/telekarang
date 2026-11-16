@@ -60,6 +60,7 @@ class KonsultasiController extends Controller
                 'status' => $data->status,
                 'keluhan' => $data->keluhan,
                 'mode' => $data->mode,
+                'tautanVideo' => $data->tautan_video,
                 'tanggal' => TanggalIndonesia::format($data->tanggal ?? $data->tanggal_skrining),
                 'tanggalSkrining' => TanggalIndonesia::format($data->tanggal_skrining),
                 'dokter' => $data->dokterSpesialis?->nama,
@@ -108,7 +109,7 @@ class KonsultasiController extends Controller
             'dokterTersedia' => $this->dokterTersedia(),
             'pesan' => $data->pesan->map(fn (Pesan $pesan) => [
                 'id' => $pesan->id,
-                'pengirim' => $pesan->pengirim?->name ?? 'Pengguna',
+                'pengirim' => $this->namaPengirim($pesan, $data),
                 'peran' => $pesan->pengirim?->role ?? 'sistem',
                 'isi' => $pesan->isi,
                 'lampiranFoto' => $pesan->lampiran_foto,
@@ -236,6 +237,18 @@ class KonsultasiController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Nama pengirim pesan; pesan pasien memakai nama pada data pasien.
+     */
+    private function namaPengirim(Pesan $pesan, Konsultasi $konsultasi): string
+    {
+        if ($pesan->pengirim?->role === 'pasien') {
+            return $konsultasi->pasien?->nama ?? 'Pasien';
+        }
+
+        return $pesan->pengirim?->name ?? 'Pengguna';
     }
 
     private function formatJadwal(Konsultasi $konsultasi): ?string

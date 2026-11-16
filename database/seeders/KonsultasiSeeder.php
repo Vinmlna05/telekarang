@@ -196,6 +196,12 @@ class KonsultasiSeeder extends Seeder
                 ],
             );
 
+            if ($item['mode'] === 'video' && $item['dokter'] !== null) {
+                $konsultasi->update([
+                    'tautan_video' => 'https://meet.google.com/tkr-'.str_pad((string) $konsultasi->id, 3, '0', STR_PAD_LEFT).'-vid',
+                ]);
+            }
+
             if ($item['icd10'] === null) {
                 continue;
             }

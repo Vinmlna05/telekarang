@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Pesan;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -32,6 +33,23 @@ test('nurses can view a consultation detail page', function () {
             ->where('dokterTersedia.0.jadwal.0.jamMulai', '09:00'));
 });
 
+test('nurses receive the video link sent by the specialist', function () {
+    $perawat = User::factory()->create(['role' => 'perawat']);
+    $pasien = pasienUji(['nama' => 'Alif']);
+    $konsultasi = konsultasiUji($pasien, [
+        'status' => 'BERLANGSUNG',
+        'mode' => 'video',
+        'tautan_video' => 'https://meet.google.com/abc-defg-hij',
+    ]);
+
+    $this->actingAs($perawat)
+        ->get("/perawat/konsultasi/{$konsultasi->id}")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('konsultasi.mode', 'video')
+            ->where('konsultasi.tautanVideo', 'https://meet.google.com/abc-defg-hij'));
+});
+
 test('an unknown consultation cannot be opened', function () {
     $perawat = User::factory()->create(['role' => 'perawat']);
 
@@ -56,3 +74,26 @@ test('users with other roles cannot view a consultation detail page', function (
         ->get('/perawat/konsultasi/1')
         ->assertForbidden();
 })->with(['pasien', 'dokter_umum', 'spesialis', 'admin']);
+
+test('patient messages use the patient record name instead of the account name', function () {
+    $perawat = User::factory()->create(['role' => 'perawat']);
+    $akunPasien = User::factory()->create(['role' => 'pasien', 'name' => 'Alvin Maulana']);
+    $pasien = pasienUji(['nama' => 'Alif'], $akunPasien);
+    $konsultasi = konsultasiUji($pasien, ['status' => 'BERLANGSUNG']);
+
+    Pesan::query()->create([
+        'konsultasi_id' => $konsultasi->id,
+        'pengirim_id' => $akunPasien->id,
+        'isi' => 'Dok, saya sudah minum obat.',
+        'status_kirim' => 'terkirim',
+        'waktu' => now(),
+    ]);
+
+    $this->actingAs($perawat)
+        ->get("/perawat/konsultasi/{$konsultasi->id}")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('pasien.nama', 'Alif')
+            ->where('pesan.0.pengirim', 'Alif')
+            ->where('pesan.0.isi', 'Dok, saya sudah minum obat.'));
+});

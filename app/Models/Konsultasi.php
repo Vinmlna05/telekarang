@@ -101,6 +101,7 @@ class Konsultasi extends Model
         'dokter_spesialis_id',
         'jadwal_id',
         'mode',
+        'tautan_video',
         'status',
         'keluhan',
         'tanggal_skrining',
